@@ -1023,9 +1023,9 @@ function makeTransomTexture() {
       const grd = g.createLinearGradient(0, y, 0, y + hh); grd.addColorStop(0, '#5f7f8c'); grd.addColorStop(1, '#22333b'); g.fillStyle = grd; g.fillRect(x - ww / 2, y, ww, hh);
       g.strokeStyle = '#b8935a'; g.lineWidth = 2; g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + hh); g.moveTo(x - ww / 2, y + hh / 2); g.lineTo(x + ww / 2, y + hh / 2); g.stroke();
     }
-    g.fillStyle = '#c9a45c'; g.font = 'italic 600 46px "Instrument Serif", Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText('MERIDIAN', w / 2, h * 0.82);
-    g.strokeStyle = '#c9a45c'; g.lineWidth = 3; g.beginPath(); g.moveTo(w * 0.1, h * 0.2); g.quadraticCurveTo(w * 0.5, h * 0.08, w * 0.9, h * 0.2); g.stroke();
+    g.fillStyle = '#c9a45c'; g.font = 'italic 600 38px "Instrument Serif", Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('MERIDIAN', w / 2, h * 0.17);   // name across the broad upper transom, clear of the windows
+    g.strokeStyle = '#c9a45c'; g.lineWidth = 3; g.beginPath(); g.moveTo(w * 0.12, h * 0.065); g.quadraticCurveTo(w * 0.5, h * 0.02, w * 0.88, h * 0.065); g.stroke();
   });
 }
 function makeLabelTexture() {
@@ -1312,14 +1312,15 @@ function buildShip(env) {
   /* ---- keel, stem, rudder ---- */
   {
     for (let i = 0; i < 24; i++) {
-      const s0 = 0.03 + 0.8 * i / 24, s1 = 0.03 + 0.8 * (i + 1) / 24;
+      const s0 = 0.83 * i / 24, s1 = 0.83 * (i + 1) / 24;
       const a = hullPt(s0, 0, 1), b = hullPt(s1, 0, 1);
       furnList.push(boxAt((a[0] + b[0]) / 2, (a[1] + b[1]) / 2 - 0.011, 0, Math.abs(b[0] - a[0]) + 0.002, 0.024, 0.012, 0x3a2414));
     }
     const stemPts = []; for (let j = 0; j <= 14; j++) { const p = hullPt(1, j / 14, 1); stemPts.push(V3(p[0] + 0.008, p[1], 0)); }
     for (let j = 0; j < 14; j++) furnList.push(cylBetween(stemPts[j], stemPts[j + 1], 0.009, 0.009, 6, 0x2a1a10));
     const r0 = hullPt(0.0, 0.0, 1);
-    furnList.push(boxAt(r0[0] - 0.035, (keelY(0.02) + 0.12) / 2, 0, 0.06, 0.12 - keelY(0.02), 0.012, 0x3b2a1a));
+    const rTop = -0.012, rBot = keelY(0) - 0.012;   // rudder hung under the counter, below the stern windows
+    furnList.push(boxAt(r0[0] - 0.03, (rTop + rBot) / 2, 0, 0.055, rTop - rBot, 0.012, 0x3b2a1a));
   }
 
   /* ---- masts, tops, yards ---- */
@@ -1334,9 +1335,10 @@ function buildShip(env) {
     const foot = mastAt(m, m.yd - 0.03), lowerHead = mastAt(m, m.top + 0.06);
     sparList.push(cylBetween(foot, lowerHead, m.r, m.r * 0.82, 10, C.woodL));
     for (let k = 1; k <= 4; k++) { const p = mastAt(m, lerp(m.yd + 0.05, m.top - 0.04, k / 5)); sparList.push(cylBetween(p.clone().setY(p.y - 0.004), p.clone().setY(p.y + 0.004), m.r * 1.12, m.r * 1.12, 10, C.black)); }
-    const topC = mastAt(m, m.top); sparList.push(boxAt(topC.x - 0.012, topC.y, 0, 0.12, 0.008, 0.17, C.black));
-    sparList.push(boxAt(topC.x - 0.012, topC.y + 0.012, 0.085, 0.12, 0.016, 0.004, C.black));
-    sparList.push(boxAt(topC.x - 0.012, topC.y + 0.012, -0.085, 0.12, 0.016, 0.004, C.black));
+    // the top sits mostly abaft the mast so the topsail can set clear of its fore edge
+    const topC = mastAt(m, m.top); sparList.push(boxAt(topC.x - 0.036, topC.y, 0, 0.11, 0.008, 0.17, C.black));
+    sparList.push(boxAt(topC.x - 0.036, topC.y + 0.012, 0.085, 0.11, 0.016, 0.004, C.black));
+    sparList.push(boxAt(topC.x - 0.036, topC.y + 0.012, -0.085, 0.11, 0.016, 0.004, C.black));
     const capP = mastAt(m, m.top + 0.06); sparList.push(boxAt(capP.x + 0.012, capP.y, 0, 0.065, 0.018, 0.04, C.black));
     const off = m.r * 1.65;
     const tmFoot = mastAt(m, m.top - 0.05).add(V3(off, 0, 0)), tmHead = mastAt(m, m.tm + 0.04).add(V3(off, 0, 0));
