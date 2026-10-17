@@ -3414,6 +3414,7 @@ window.shipInABottle = {
   release() { bottle.grabbed = false; },
   view(az, el, zoom, target) { if (target) cam.targetG.set(...target); if (az !== undefined) cam.azG = az; if (el !== undefined) cam.elG = clamp(el, -0.04, 1.22); if (zoom !== undefined) cam.zoomG = clamp(zoom, ZOOM_MIN, ZOOM_MAX); updateCameraValue(); },
   lightning() { triggerLightning(); },
+  shipModel() { return shipRig ? shipRig.group : null; },
   get ship() { return { pos: ship.pos.toArray(), quat: ship.quat.toArray() }; },
   get simEnergy() { return SIM.energy; },
 };
