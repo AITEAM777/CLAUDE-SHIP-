@@ -1,0 +1,2522 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+<title>The Living Ocean</title>
+<meta name="description" content="A three-masted barque under sail on a living ocean. Change the weather and watch the crew reef sails, man the ropes and ride out the storm.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Display&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: full-bleed WebGL sea; a logbook column at left, a chart-room instrument panel at right,
+     selected-crew card bottom-left. One visual world (a ship at sea), so a single light glass theme
+     that stays legible over both blue sky and storm cloud. */
+  :root {
+    --ink: #0f1d33;
+    --ink-2: #3a4860;
+    --ink-3: #6b778c;
+    --paper: rgba(247, 249, 251, 0.86);
+    --paper-2: rgba(247, 249, 251, 0.64);
+    --line: rgba(15, 29, 51, 0.12);
+    --line-2: rgba(15, 29, 51, 0.22);
+    --navy: #1b3866;
+    --navy-soft: rgba(27, 56, 102, 0.1);
+    --ensign: #b93a2c;
+    --brass: #a8823e;
+    --sea: #0d2a44;
+    --display: "Libre Caslon Display", "Caslon", "Didot", Georgia, serif;
+    --body: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+    --shadow: 0 24px 60px -26px rgba(8, 20, 40, 0.55), 0 2px 8px rgba(8, 20, 40, 0.08);
+    --ease: cubic-bezier(.2, .8, .2, 1);
+    --panel-w: 320px;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body { background: var(--sea); color: var(--ink); font-family: var(--body); font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
+  button, input, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+  #scene { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; outline: none; cursor: grab; }
+  #scene:active { cursor: grabbing; }
+
+  .glass { background: var(--paper); border: 1px solid rgba(255,255,255,.7); border-radius: 16px; box-shadow: var(--shadow); backdrop-filter: blur(16px) saturate(1.1); -webkit-backdrop-filter: blur(16px) saturate(1.1); }
+
+  /* ---------- logbook column ---------- */
+  .log {
+    position: fixed; z-index: 3; left: calc(18px + env(safe-area-inset-left, 0px)); top: calc(18px + env(safe-area-inset-top, 0px));
+    width: min(290px, 26vw); padding: 20px 20px 16px;
+  }
+  .eyebrow { margin: 0; font-size: 10px; letter-spacing: .24em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+  .title { margin: 10px 0 0; font-family: var(--display); font-weight: 400; font-size: clamp(30px, 3.1vw, 44px); line-height: .98; letter-spacing: .01em; text-wrap: balance; }
+  .title em { font-style: normal; color: var(--navy); }
+  .sub { margin: 10px 0 0; font-family: var(--display); font-size: 15px; line-height: 1.4; color: var(--ink-2); }
+  .hint { margin: 12px 0 0; font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); }
+  .readout { margin: 14px 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .readout div { display: grid; gap: 1px; min-width: 0; }
+  .readout dt { font-size: 9px; letter-spacing: .18em; text-transform: uppercase; color: var(--ink-3); }
+  .readout dd { margin: 0; font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .readout dd.alert { color: var(--ensign); }
+  #logCollapse { display: none; }
+
+  /* ---------- chart-room panel ---------- */
+  #panel {
+    position: fixed; z-index: 4; right: calc(16px + env(safe-area-inset-right, 0px)); top: calc(16px + env(safe-area-inset-top, 0px));
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px)); width: var(--panel-w); display: flex; flex-direction: column;
+    transition: transform .4s var(--ease);
+  }
+  #panel.collapsed { transform: translateX(calc(100% - 46px)); }
+  #panel.collapsed .pbody { visibility: hidden; }
+  .phead { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 12px 10px 16px; border-bottom: 1px solid var(--line); }
+  .phead h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 19px; }
+  #panel.collapsed #panelToggle { order: -1; }
+  .pbody { overflow-y: auto; overscroll-behavior: contain; padding: 4px 12px 14px; flex: 1; scrollbar-width: thin; }
+  .grp { border-bottom: 1px solid var(--line); }
+  .grp:last-child { border-bottom: 0; }
+  .ghead { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 8px; padding: 11px 2px; cursor: pointer;
+    font-size: 10px; letter-spacing: .22em; text-transform: uppercase; font-weight: 600; color: var(--ink-2); }
+  .ghead:focus-visible { outline: 2px solid var(--navy); border-radius: 6px; }
+  .ghead .b { margin-left: auto; font-family: var(--mono); letter-spacing: 0; text-transform: none; font-weight: 500; color: var(--navy); font-size: 10.5px; }
+  .ghead .chev { width: 8px; height: 8px; border-right: 1.5px solid var(--ink-3); border-bottom: 1.5px solid var(--ink-3); transform: rotate(45deg) translateY(-2px); transition: transform .25s var(--ease); }
+  .ghead[aria-expanded="false"] .chev { transform: rotate(-45deg); }
+  .gbody { display: grid; gap: 9px; padding: 0 2px 13px; }
+
+  .wx { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+  .wx button { all: unset; box-sizing: border-box; cursor: pointer; display: grid; justify-items: center; gap: 2px; padding: 7px 2px 6px; border-radius: 10px;
+    border: 1px solid var(--line); background: rgba(255,255,255,.45); font-size: 10px; color: var(--ink-2); text-align: center; line-height: 1.1; }
+  .wx button svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .wx button:hover { background: rgba(255,255,255,.85); color: var(--ink); }
+  .wx button[aria-checked="true"] { background: var(--ink); border-color: var(--ink); color: #f4f6f9; }
+  .wx button:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+
+  .row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 3px 10px; }
+  .row label, .lbl { font-size: 12px; color: var(--ink-2); }
+  .row output { font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; min-width: 4.5em; text-align: right; }
+  .row input[type="range"] { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: var(--navy); height: 18px; }
+  .btn { all: unset; box-sizing: border-box; cursor: pointer; text-align: center; padding: 7px 6px; border-radius: 9px; border: 1px solid var(--line-2);
+    background: rgba(255,255,255,.5); font-size: 11.5px; line-height: 1.2; user-select: none; }
+  .btn:hover { background: rgba(255,255,255,.9); }
+  .btn:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+  .btn[aria-pressed="true"] { background: var(--navy); border-color: var(--navy); color: #fff; }
+  .btn.primary { background: var(--ink); border-color: var(--ink); color: #f4f6f9; }
+  .btn.alert { color: var(--ensign); border-color: rgba(185,58,44,.4); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 2px; border-radius: 10px; background: var(--navy-soft); border: 1px solid var(--line); }
+  .seg button { all: unset; box-sizing: border-box; cursor: pointer; text-align: center; padding: 6px 2px; border-radius: 8px; font-size: 11px; color: var(--ink-2); }
+  .seg button[aria-checked="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(8,20,40,.15); }
+  .seg button:focus-visible { outline: 2px solid var(--navy); }
+  .switch { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--ink-2); cursor: pointer; }
+  .switch input { appearance: none; -webkit-appearance: none; margin: 0; width: 30px; height: 17px; border-radius: 9px; background: var(--line-2); position: relative; cursor: pointer; flex: none; transition: background .2s; }
+  .switch input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .2s var(--ease); }
+  .switch input:checked { background: var(--navy); }
+  .switch input:checked::after { transform: translateX(13px); }
+  .switch input:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+  select.sel { width: 100%; padding: 6px 8px; border-radius: 9px; border: 1px solid var(--line-2); background: rgba(255,255,255,.6); font-size: 12px; }
+  .note { margin: 0; font-size: 11px; color: var(--ink-3); }
+  .chip { display: inline-block; font-family: var(--mono); font-size: 10.5px; padding: 1px 7px; border-radius: 999px; background: var(--navy-soft); color: var(--navy); }
+
+  /* ---------- selected crew card ---------- */
+  #crewCard { position: fixed; z-index: 3; left: calc(18px + env(safe-area-inset-left, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); width: min(290px, 26vw); padding: 14px 16px; }
+  #crewCard h3 { margin: 4px 0 2px; font-family: var(--display); font-weight: 400; font-size: 19px; }
+  #crewCard .state { font-family: var(--mono); font-size: 11px; color: var(--navy); }
+  #crewCard .acts { display: flex; gap: 6px; margin-top: 10px; }
+
+  #labels { position: fixed; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+  .clabel { position: absolute; transform: translate(-50%, -100%); white-space: nowrap; padding: 2px 7px; border-radius: 999px; background: rgba(247,249,251,.82);
+    font-size: 10px; font-weight: 500; color: var(--ink); box-shadow: 0 2px 6px rgba(8,20,40,.18); }
+  .clabel b { font-weight: 600; letter-spacing: .04em; }
+  .clabel small { display: block; font-family: var(--mono); font-size: 9px; color: var(--navy); }
+  .clabel.cap { background: rgba(15,29,51,.9); color: #fff; }
+  .clabel.cap small { color: #e6cf9c; }
+
+  #toast { position: fixed; z-index: 6; left: 50%; top: calc(18px + env(safe-area-inset-top, 0px)); transform: translate(-50%, -10px); padding: 8px 16px; border-radius: 999px;
+    background: var(--ink); color: #f4f6f9; font-size: 12px; opacity: 0; pointer-events: none; transition: opacity .3s, transform .3s; max-width: min(560px, 80vw); text-align: center; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  #cineBar { position: fixed; z-index: 5; left: 50%; transform: translateX(-50%); bottom: calc(22px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 8px; align-items: center; padding: 6px 6px 6px 14px; }
+  #cineBar span { font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--ink-3); }
+  #flash { position: fixed; inset: 0; z-index: 1; pointer-events: none; background: #dfe8ff; opacity: 0; mix-blend-mode: screen; }
+  #loading { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; background: #0d2a44; color: #e9eef5; transition: opacity .7s; }
+  #loading.done { opacity: 0; pointer-events: none; }
+  #loading p { margin: 0; font-family: var(--display); font-size: 24px; text-align: center; padding: 0 24px; }
+  #loading small { display: block; font-family: var(--body); font-size: 12px; opacity: .7; margin-top: 8px; }
+
+  @media (max-width: 1100px) { :root { --panel-w: 290px; } .log { width: 240px; } .sub { font-size: 13.5px; } }
+  @media (max-width: 820px) {
+    .log { width: auto; right: 16px; padding: 12px 14px; }
+    .title { font-size: 26px; }
+    .sub, .hint { display: none; }
+    .readout { grid-template-columns: repeat(4, 1fr); margin-top: 8px; padding-top: 8px; }
+    .readout div:nth-child(n+5) { display: none; }
+    #panel { left: 0; right: 0; top: auto; bottom: 0; width: auto; height: min(70vh, 560px); border-radius: 18px 18px 0 0;
+      padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+    #panel.collapsed { transform: translateY(calc(100% - 52px - env(safe-area-inset-bottom, 0px))); }
+    #panel.collapsed #panelToggle { order: 0; }
+    #crewCard { width: auto; right: 16px; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition-duration: .01ms !important; } }
+</style>
+
+</head>
+<body>
+
+<canvas id="scene" tabindex="0" aria-label="Interactive 3D sailing ship on the ocean. Drag to orbit, scroll to zoom, click a sailor to inspect them. All controls are in the panel."></canvas>
+<div id="flash" aria-hidden="true"></div>
+<div id="labels" aria-hidden="true"></div>
+
+<header class="log glass">
+  <p class="eyebrow">Three-masted barque · 50 m</p>
+  <h1 class="title">The Living <em>Ocean</em></h1>
+  <p class="sub">One ship. An endless sea. A crew that responds to every storm.</p>
+  <p class="hint">Drag to explore · Scroll to zoom · Command the weather</p>
+  <dl class="readout" aria-live="off">
+    <div><dt>Weather</dt><dd id="rWeather">Clear</dd></div>
+    <div><dt>Wind</dt><dd id="rWind">14 kn</dd></div>
+    <div><dt>Waves</dt><dd id="rWaves">0.9 m</dd></div>
+    <div><dt>Speed</dt><dd id="rSpeed">0.0 kn</dd></div>
+    <div><dt>Heel · pitch</dt><dd id="rAttitude">0° · 0°</dd></div>
+    <div><dt>Heading</dt><dd id="rHeading">045°</dd></div>
+    <div><dt>Sails</dt><dd id="rSails">Fully deployed</dd></div>
+    <div><dt>Crew</dt><dd id="rCrew">Routine duties</dd></div>
+  </dl>
+</header>
+
+<aside id="panel" class="glass" aria-label="Simulation controls">
+  <div class="phead">
+    <h2>Chart room</h2>
+    <button class="btn" id="panelToggle" aria-expanded="true" aria-controls="pbody">Hide</button>
+  </div>
+  <div class="pbody" id="pbody">
+    <section class="grp">
+      <button class="ghead" aria-expanded="true" aria-controls="g-wx">Weather <span class="b" id="bWx">Clear</span><span class="chev" aria-hidden="true"></span></button>
+      <div class="gbody" id="g-wx">
+        <div class="wx" role="radiogroup" aria-label="Weather preset" id="wxGroup">
+          <button role="radio" aria-checked="true" data-v="clear"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/></svg>Clear</button>
+          <button role="radio" aria-checked="false" data-v="cloudy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18h10a4 4 0 0 0 0-8 5.5 5.5 0 0 0-10.6 1.5A3.3 3.3 0 0 0 7 18z"/></svg>Cloudy</button>
+          <button role="radio" aria-checked="false" data-v="rain"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 14h10a4 4 0 0 0 0-8 5.5 5.5 0 0 0-10.6 1.5A3.3 3.3 0 0 0 7 14z"/><path d="M8 17l-1 3M12 17l-1 3M16 17l-1 3"/></svg>Rain</button>
+          <button role="radio" aria-checked="false" data-v="storm"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 13h10a4 4 0 0 0 0-8 5.5 5.5 0 0 0-10.6 1.5A3.3 3.3 0 0 0 7 13z"/><path d="M12 14l-2 4h3l-2 4"/></svg>Storm</button>
+          <button role="radio" aria-checked="false" data-v="extreme"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15c3-3 5 3 8 0s5 3 8 0M3 19c3-3 5 3 8 0s5 3 8 0"/><path d="M12 3l-2 4h3l-2 4"/></svg>Extreme</button>
+        </div>
+        <div class="row"><label for="transition">Transition time</label><output id="oTransition">10 s</output><input type="range" id="transition" min="2" max="40" value="10"></div>
+        <div class="row"><label for="tod">Time of day</label><output id="oTod">Midday</output><input type="range" id="tod" min="0" max="100" value="33"></div>
+      </div>
+    </section>
+
+    <section class="grp">
+      <button class="ghead" aria-expanded="true" aria-controls="g-ocean">Ocean physics<span class="chev" aria-hidden="true"></span></button>
+      <div class="gbody" id="g-ocean">
+        <div class="row"><label for="waveHeight">Wave height</label><output id="oWaveHeight"></output><input type="range" id="waveHeight" min="0.1" max="8" step="0.1" value="0.9"></div>
+        <div class="row"><label for="waveSpeed">Wave speed</label><output id="oWaveSpeed"></output><input type="range" id="waveSpeed" min="0.4" max="1.8" step="0.01" value="1"></div>
+        <div class="row"><label for="steepness">Wave steepness</label><output id="oSteepness"></output><input type="range" id="steepness" min="0" max="1" step="0.01" value="0.35"></div>
+        <div class="row"><label for="windStrength">Wind strength</label><output id="oWindStrength"></output><input type="range" id="windStrength" min="0" max="36" step="0.5" value="7"></div>
+        <div class="row"><label for="windDir">Wind direction (from)</label><output id="oWindDir"></output><input type="range" id="windDir" min="0" max="359" value="200"></div>
+        <div class="row"><label for="motion">Ship motion intensity</label><output id="oMotion"></output><input type="range" id="motion" min="0" max="2" step="0.05" value="1"></div>
+      </div>
+    </section>
+
+    <section class="grp">
+      <button class="ghead" aria-expanded="true" aria-controls="g-ship">Ship <span class="b" id="bShip">Fully deployed</span><span class="chev" aria-hidden="true"></span></button>
+      <div class="gbody" id="g-ship">
+        <div class="row"><label for="speed">Sailing speed (max)</label><output id="oSpeed"></output><input type="range" id="speed" min="0" max="14" step="0.5" value="7"></div>
+        <div class="row"><label for="sail">Sail deployment</label><output id="oSail"></output><input type="range" id="sail" min="0" max="100" value="100"></div>
+        <div class="row"><label for="heading">Ship heading</label><output id="oHeading"></output><input type="range" id="heading" min="0" max="359" value="45"></div>
+        <label class="switch" for="autoSail">Auto sail (crew reef to suit the weather)<input type="checkbox" id="autoSail" checked></label>
+        <button class="btn" id="resetShip">Reset ship position</button>
+      </div>
+    </section>
+
+    <section class="grp">
+      <button class="ghead" aria-expanded="false" aria-controls="g-crew">Crew <span class="b" id="bCrew">Normal</span><span class="chev" aria-hidden="true"></span></button>
+      <div class="gbody" id="g-crew" hidden>
+        <span class="lbl" id="actLbl">Crew activity</span>
+        <div class="seg" role="radiogroup" aria-labelledby="actLbl" id="actSeg">
+          <button role="radio" aria-checked="false" data-v="relaxed">Relaxed</button>
+          <button role="radio" aria-checked="true" data-v="normal">Normal</button>
+          <button role="radio" aria-checked="false" data-v="busy">Busy</button>
+        </div>
+        <label class="switch" for="labelsT">Show crew labels<input type="checkbox" id="labelsT"></label>
+        <label class="switch" for="debugT">Crew behaviour debug (states)<input type="checkbox" id="debugT"></label>
+        <div class="grid2"><button class="btn" id="followCap">Follow captain</button><button class="btn alert" id="drill">Emergency drill</button></div>
+        <span class="lbl">Captain's orders</span>
+        <div class="grid2">
+          <button class="btn" id="cmdPrepare">Prepare for storm</button>
+          <button class="btn" id="cmdSecure">Secure sails</button>
+          <button class="btn" id="cmdStations">Return to stations</button>
+          <button class="btn" id="cmdResume">Resume normal duties</button>
+        </div>
+        <p class="note" id="cmdNote">No standing orders. The crew follows the weather.</p>
+      </div>
+    </section>
+
+    <section class="grp">
+      <button class="ghead" aria-expanded="false" aria-controls="g-cam">Camera <span class="b" id="bCam">Overview</span><span class="chev" aria-hidden="true"></span></button>
+      <div class="gbody" id="g-cam" hidden>
+        <div class="grid4">
+          <button class="btn" data-cam="overview">Overview</button><button class="btn" data-cam="side">Side</button>
+          <button class="btn" data-cam="bow">Bow</button><button class="btn" data-cam="stern">Stern</button>
+          <button class="btn" data-cam="deck">Deck</button><button class="btn" data-cam="captain">Captain</button>
+          <button class="btn" data-cam="cinematic">Cinematic</button><button class="btn" data-cam="reset">Reset</button>
+        </div>
+        <p class="note">Double-click anything to focus on it. Click a sailor to see what they are doing.</p>
+      </div>
+    </section>
+
+    <section class="grp">
+      <button class="ghead" aria-expanded="false" aria-controls="g-sim">Simulation &amp; sound <span class="b" id="bSim">Running</span><span class="chev" aria-hidden="true"></span></button>
+      <div class="gbody" id="g-sim" hidden>
+        <div class="grid3"><button class="btn" id="pause" aria-pressed="false">Pause</button><button class="btn" id="slowmo" aria-pressed="false">Slow motion</button><button class="btn" id="resetSim">Reset all</button></div>
+        <div class="row"><label for="animSpeed">Animation speed</label><output id="oAnim"></output><input type="range" id="animSpeed" min="0.25" max="2" step="0.05" value="1"></div>
+        <label class="lbl" for="quality">Graphics quality</label>
+        <select class="sel" id="quality"><option value="low">Low</option><option value="medium">Medium</option><option value="high" selected>High</option></select>
+        <div class="grid2"><button class="btn" id="mute" aria-pressed="true">Sound off</button><span></span></div>
+        <div class="row"><label for="volume">Volume</label><output id="oVol"></output><input type="range" id="volume" min="0" max="100" value="60"></div>
+        <p class="note">Sound is synthesised in the browser and starts when you turn it on.</p>
+      </div>
+    </section>
+  </div>
+</aside>
+
+<div id="crewCard" class="glass" hidden role="region" aria-label="Selected crew member">
+  <p class="eyebrow" id="ccRole">Rigging specialist</p>
+  <h3 id="ccName">SAILOR 04</h3>
+  <div class="state" id="ccState">Securing rigging</div>
+  <div class="acts"><button class="btn" id="ccFocus">Focus camera</button><button class="btn" id="ccClose">Close</button></div>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="cineBar" class="glass" hidden><span>Cinematic</span><button class="btn primary" id="cineExit">Exit (Esc)</button></div>
+<div id="loading"><p>Raising sail…<small id="loadingNote">Loading Three.js from the CDN</small></p></div>
+
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+<script>
+  window.addEventListener('error', function (e) {
+    var n = document.getElementById('loadingNote');
+    if (n && !window.__oceanReady) n.textContent = 'Could not start: ' + (e.message || 'script error') + '. Three.js loads from the internet and WebGL must be enabled.';
+  });
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+/* ============================================================================
+   0. CONFIGURATION — one place for every tunable value. Units are metres,
+   seconds and radians unless noted. Ship local axes: +z bow, +x port, +y up.
+   ============================================================================ */
+const CONFIG = {
+  ship: { halfBeam: 5.2, lengthHalf: 25, waterline: -3.0, keel: 6.4, freeboard: 3.0 },
+  weather: {
+    clear:   { label: 'Clear',          level: 0, waveHeight: 0.9, waveSpeed: 1.0,  steepness: 0.35, wind: 7,  clouds: 0.28, dark: 0.0,  rain: 0.0, lightning: 0.0,  fog: 0.00016, sail: 1.0,  foam: 0.15 },
+    cloudy:  { label: 'Cloudy',         level: 1, waveHeight: 1.9, waveSpeed: 1.05, steepness: 0.45, wind: 12, clouds: 0.66, dark: 0.3,  rain: 0.0, lightning: 0.0,  fog: 0.00045, sail: 0.9,  foam: 0.3 },
+    rain:    { label: 'Rain',           level: 2, waveHeight: 3.0, waveSpeed: 1.1,  steepness: 0.55, wind: 17, clouds: 0.86, dark: 0.55, rain: 0.6, lightning: 0.0,  fog: 0.0011,  sail: 0.7,  foam: 0.5 },
+    storm:   { label: 'Storm',          level: 3, waveHeight: 5.0, waveSpeed: 1.15, steepness: 0.7,  wind: 25, clouds: 1.0,  dark: 0.78, rain: 1.0, lightning: 0.22, fog: 0.0019,  sail: 0.45, foam: 0.8 },
+    extreme: { label: 'Extreme storm',  level: 4, waveHeight: 7.4, waveSpeed: 1.2,  steepness: 0.82, wind: 33, clouds: 1.0,  dark: 0.9,  rain: 1.0, lightning: 0.65, fog: 0.0026,  sail: 0.15, foam: 1.0 },
+  },
+  // Gerstner components relative to the wind: [angle offset deg, wavelength m, amplitude share]
+  waves: [[0, 96, 1.0], [26, 63, 0.6], [-32, 44, 0.44], [55, 29, 0.27], [-64, 19.5, 0.17], [14, 12.6, 0.1], [-20, 7.7, 0.058], [78, 4.9, 0.034]],
+  quality: {
+    low:    { dpr: 1,    shadow: 1024, ang: 128, rings: 96,  rain: 2500 },
+    medium: { dpr: 1.25, shadow: 2048, ang: 176, rings: 128, rain: 5000 },
+    high:   { dpr: 2,    shadow: 2048, ang: 224, rings: 150, rain: 8000 },
+  },
+  activity: { relaxed: { speed: 0.8, idle: 1.6 }, normal: { speed: 1.0, idle: 1.0 }, busy: { speed: 1.25, idle: 0.55 } },
+};
+const IS_MOBILE = matchMedia('(max-width: 820px)').matches || matchMedia('(pointer: coarse)').matches;
+
+/* ============================================================================
+   1. UTILITIES
+   ============================================================================ */
+const TAU = Math.PI * 2, DEG = Math.PI / 180;
+const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
+const lerp = (a, b, t) => a + (b - a) * t;
+const smooth = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
+const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const angDiff = (a, b) => { let d = (a - b) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; };
+function mulberry32(a) { return function () { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const rng = mulberry32(7331);
+const rnd = (a = 0, b = 1) => a + (b - a) * rng();
+const pick = (arr) => arr[Math.floor(rng() * arr.length)];
+const col = (h) => new THREE.Color(h);
+
+/** Deck half-breadth (m) at ship-local z, shared by the hull, deck, crew limits and the water mask. */
+function deckHalf(z) {
+  const B = CONFIG.ship.halfBeam, L = CONFIG.ship.lengthHalf;
+  if (z >= 0) { const t = clamp(z / L, 0, 1); return B * Math.pow(Math.max(0, 1 - Math.pow(t, 2.2)), 0.62); }
+  const t = clamp(-z / L, 0, 1); return B * (1 - 0.42 * Math.pow(t, 2.6));
+}
+
+/* ============================================================================
+   2. RENDERER + SCENE
+   ============================================================================ */
+const canvas = document.getElementById('scene');
+let renderer;
+try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' }); }
+catch (err) { document.getElementById('loadingNote').textContent = 'WebGL is not available in this browser, so the simulation cannot start.'; throw err; }
+let quality = IS_MOBILE ? 'medium' : 'high';
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, CONFIG.quality[quality].dpr));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.92;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0xb9d3e8, 0.00016);
+const camera = new THREE.PerspectiveCamera(42, 1, 0.3, 9000);
+
+const sun = new THREE.DirectionalLight(0xfff2dc, 3.0);
+sun.castShadow = true;
+sun.shadow.mapSize.set(CONFIG.quality[quality].shadow, CONFIG.quality[quality].shadow);
+Object.assign(sun.shadow.camera, { left: -48, right: 48, top: 48, bottom: -48, near: 10, far: 320 });
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.04;
+const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x1d4a66, 1.0);
+const flashLight = new THREE.DirectionalLight(0xdfe8ff, 0);
+scene.add(sun, sun.target, hemi, flashLight, flashLight.target);
+
+/* ============================================================================
+   3. OCEAN SYSTEM — layered Gerstner waves. The vertex shader and the CPU
+   buoyancy sampler evaluate exactly the same wave table every frame.
+   ============================================================================ */
+const GLSL_NOISE = /* glsl */`
+float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash12(i), hash12(i + vec2(1,0)), f.x), mix(hash12(i + vec2(0,1)), hash12(i + vec2(1,1)), f.x), f.y); }
+float fbm(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++){ s += a * vnoise(p); p = p * 2.02 + 7.3; a *= 0.5; } return s; }
+`;
+// Hull footprint in GLSL (mirrors deckHalf) for water masking, foam and wake.
+const GLSL_HULL = /* glsl */`
+float hullHalf(float z){
+  if (z >= 0.0) { float t = clamp(z / 25.0, 0.0, 1.0); return 5.2 * pow(max(0.0, 1.0 - pow(t, 2.2)), 0.62); }
+  float t = clamp(-z / 25.0, 0.0, 1.0); return 5.2 * (1.0 - 0.42 * pow(t, 2.6));
+}
+`;
+
+class OceanSystem {
+  constructor() {
+    this.p = { height: 0.9, speed: 1.0, steep: 0.35, wind: 7, windFrom: 200 * DEG };
+    this.waves = CONFIG.waves.map(([a, len, share], i) => ({ off: a * DEG, k: TAU / len, len, share, phase: i * 1.7 + 0.4, dx: 0, dz: 0, A: 0, Q: 0 }));
+    this.uA = this.waves.map(() => new THREE.Vector4());
+    this.uB = this.waves.map(() => new THREE.Vector4());
+    this.time = 0;
+    this.update(0);
+    this.material = this.makeMaterial();
+    this.mesh = null;
+    this.build(CONFIG.quality[quality]);
+  }
+  /** Blowing direction of the wind (where it goes), unit xz. */
+  windVec() { return [-Math.sin(this.p.windFrom), -Math.cos(this.p.windFrom)]; }
+  update(dt) {
+    this.time += dt;
+    const [wx, wz] = this.windVec(), base = Math.atan2(wx, wz);
+    const n = this.waves.length;
+    this.waves.forEach((w, i) => {
+      const a = base + w.off;
+      w.dx = Math.sin(a); w.dz = Math.cos(a);
+      // wind grows the short waves first; long swell scales with the height setting
+      const windShare = i >= 5 ? lerp(0.5, 1.5, clamp(this.p.wind / 30, 0, 1)) : 1;
+      w.A = this.p.height * 0.42 * w.share * windShare;
+      const omega = Math.sqrt(9.81 * w.k) * this.p.speed;
+      w.phase = (w.phase + omega * dt) % (TAU * 1000);
+      w.Q = w.A > 1e-4 ? clamp(this.p.steep / (w.k * w.A * n), 0, 1.6 / (w.k * w.A * n)) : 0;
+      this.uA[i].set(w.dx, w.dz, w.k, w.Q);
+      this.uB[i].set(w.A, w.phase, 0, 0);
+    });
+  }
+  /** Gerstner displacement of the undisplaced surface point (x, z). */
+  displace(x, z, out) {
+    let dx = 0, dy = 0, dz = 0;
+    for (const w of this.waves) {
+      const f = w.k * (w.dx * x + w.dz * z) - w.phase, c = Math.cos(f), s = Math.sin(f);
+      dx += w.Q * w.A * w.dx * c; dz += w.Q * w.A * w.dz * c; dy += w.A * s;
+    }
+    out[0] = dx; out[1] = dy; out[2] = dz; return out;
+  }
+  /** Surface height at a world xz: invert the horizontal Gerstner shift by fixed-point iteration. */
+  heightAt(x, z) {
+    const o = this._o || (this._o = [0, 0, 0]);
+    let px = x, pz = z;
+    for (let i = 0; i < 4; i++) { this.displace(px, pz, o); px = x - o[0]; pz = z - o[2]; }
+    this.displace(px, pz, o);
+    return o[1];
+  }
+  makeMaterial() {
+    const u = {
+      uWA: { value: this.uA }, uWB: { value: this.uB }, uCam: { value: new THREE.Vector3() },
+      uShipPos: { value: new THREE.Vector3() }, uShipDir: { value: new THREE.Vector2(0, 1) }, uShipSpeed: { value: 0 },
+      uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color(1, 1, 1) }, uZenith: { value: new THREE.Color() }, uHorizon: { value: new THREE.Color() },
+      uDeep: { value: new THREE.Color('#0a3555') }, uShallow: { value: new THREE.Color('#1f7a8c') }, uAmb: { value: new THREE.Color(0.5, 0.6, 0.7) },
+      uFogCol: { value: new THREE.Color() }, uFogDen: { value: 0.0002 }, uTime: { value: 0 }, uFoam: { value: 0.2 }, uRain: { value: 0 }, uFlash: { value: 0 },
+      uRipple: { value: 0.3 }, uOvercast: { value: 0 }, uWind: { value: new THREE.Vector2(0, 1) },
+    };
+    this.u = u;
+    return new THREE.ShaderMaterial({
+      uniforms: u, fog: false,
+      vertexShader: /* glsl */`
+        uniform vec4 uWA[8]; uniform vec4 uWB[8]; uniform vec3 uCam; uniform vec3 uShipPos; uniform vec2 uShipDir;
+        varying vec3 vWorld; varying vec3 vN; varying float vCrest;
+        ${GLSL_HULL}
+        void main(){
+          vec4 wp = modelMatrix * vec4(position, 1.0);
+          vec2 p = wp.xz;
+          float dist = length(p - uCam.xz);
+          vec3 pos = vec3(p.x, 0.0, p.y);
+          vec3 N = vec3(0.0, 1.0, 0.0);
+          float crest = 0.0;
+          for (int i = 0; i < 8; i++) {
+            vec2 d = uWA[i].xy; float k = uWA[i].z; float Q = uWA[i].w; float A = uWB[i].x; float ph = uWB[i].y;
+            float lam = 6.2831853 / k;
+            A *= 1.0 - smoothstep(lam * 22.0, lam * 60.0, dist);
+            float f = k * dot(d, p) - ph; float c = cos(f), s = sin(f);
+            pos.x += Q * A * d.x * c; pos.z += Q * A * d.y * c; pos.y += A * s;
+            float WA = k * A;
+            N.x -= d.x * WA * c; N.z -= d.y * WA * c; N.y -= Q * WA * s;
+            crest += Q * WA * s;
+          }
+          // keep the sea out of the hull interior so waves never flood through the deck
+          vec2 rel = pos.xz - uShipPos.xz;
+          float along = dot(rel, uShipDir), across = dot(rel, vec2(uShipDir.y, -uShipDir.x));
+          if (abs(along) < 24.6 && abs(across) < hullHalf(along) - 0.35) pos.y = min(pos.y, uShipPos.y - 1.2);
+          vWorld = pos; vN = N; vCrest = crest;
+          gl_Position = projectionMatrix * viewMatrix * vec4(pos, 1.0);
+        }`,
+      fragmentShader: /* glsl */`
+        uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uZenith; uniform vec3 uHorizon; uniform vec3 uDeep; uniform vec3 uShallow; uniform vec3 uAmb;
+        uniform vec3 uFogCol; uniform float uFogDen; uniform float uTime; uniform float uFoam; uniform float uRain; uniform float uFlash; uniform float uRipple; uniform float uOvercast;
+        uniform vec3 uShipPos; uniform vec2 uShipDir; uniform float uShipSpeed; uniform vec2 uWind;
+        varying vec3 vWorld; varying vec3 vN; varying float vCrest;
+        ${GLSL_NOISE}
+        ${GLSL_HULL}
+        void main(){
+          vec3 N = normalize(vN);
+          vec3 V = normalize(cameraPosition - vWorld);
+          float dist = length(cameraPosition - vWorld);
+          vec2 q = vWorld.xz;
+          // capillary ripples: analytic small waves, faded with distance to avoid shimmer
+          float rf = uRipple * (1.0 - smoothstep(18.0, 110.0, dist)) * clamp(1.0 - length(fwidth(q)) * 2.5, 0.0, 1.0);
+          vec2 g = vec2(0.0);
+          for (int i = 0; i < 5; i++) {
+            float fi = float(i);
+            vec2 d = normalize(vec2(cos(fi * 2.39 + 0.3) + uWind.x * 1.5, sin(fi * 2.39 + 0.3) + uWind.y * 1.5));
+            float k = 2.4 + fi * 1.9;
+            float ph = k * dot(d, q) - uTime * sqrt(9.81 * k) * 1.0 + fi * 11.0;
+            g += d * cos(ph) * (0.055 / (1.0 + fi * 0.6)) * k;
+          }
+          N = normalize(N + vec3(-g.x, 0.0, -g.y) * rf * 0.2);
+          // rain rings
+          float rings = 0.0;
+          if (uRain > 0.01 && dist < 90.0) {
+            vec2 cell = floor(q * 1.6); vec2 fc = fract(q * 1.6) - 0.5;
+            float rnd = hash12(cell);
+            float t = fract(uTime * 1.3 + rnd * 7.0);
+            float r = length(fc + (vec2(hash12(cell + 3.1), hash12(cell + 7.7)) - 0.5) * 0.4);
+            rings = (1.0 - smoothstep(0.0, 0.06, abs(r - t * 0.45))) * (1.0 - t) * step(rnd, uRain) * (1.0 - dist / 90.0);
+            N = normalize(N + vec3(fc.x, 0.0, fc.y) * rings * 0.6);
+          }
+          float NdV = max(dot(N, V), 0.0);
+          float fres = 0.02 + 0.98 * pow(1.0 - NdV, 5.0);
+          vec3 R = reflect(-V, N); R.y = abs(R.y);
+          vec3 sky = mix(uHorizon, uZenith, pow(clamp(R.y, 0.0, 1.0), 0.5));
+          float sunR = max(dot(R, uSunDir), 0.0);
+          sky += uSunCol * pow(sunR, 12.0) * 0.18 * (1.0 - uOvercast);
+          // water body with subsurface scatter on the crests facing away from the sun
+          float sss = pow(max(dot(V, -uSunDir) * 0.5 + 0.5, 0.0), 3.0) * clamp(vCrest * 1.6 + 0.15, 0.0, 1.0);
+          vec3 body = mix(uDeep, uShallow, clamp(vCrest * 0.9 + 0.12, 0.0, 1.0)) * (uAmb * 0.9 + 0.25);
+          body += uShallow * sss * 0.6 * (1.0 - uOvercast * 0.7);
+          vec3 c = mix(body, sky, fres);
+          c += uSunCol * (pow(sunR, 420.0) * 9.0 + pow(sunR, 60.0) * 0.35) * (1.0 - uOvercast * 0.92) * max(uSunDir.y, 0.0);
+          // foam: steep crests, the hull, the bow wave and the wake
+          float n1 = fbm(q * 0.35 + uTime * 0.05), n2 = fbm(q * 1.7 - uTime * 0.12);
+          float crestFoam = smoothstep(0.42, 0.82, vCrest + (n1 - 0.5) * 0.45) * uFoam;
+          vec2 rel = vWorld.xz - uShipPos.xz;
+          float along = dot(rel, uShipDir), across = dot(rel, vec2(uShipDir.y, -uShipDir.x));
+          float spd = clamp(uShipSpeed / 5.0, 0.0, 1.4);
+          float hull = 0.0;
+          if (abs(along) < 27.0) {
+            float edge = abs(across) - hullHalf(clamp(along, -25.0, 25.0));
+            float bow = smoothstep(5.0, 24.0, along);
+            hull = (1.0 - smoothstep(0.0, 1.6 + 2.2 * bow * spd, edge)) * step(-0.6, edge) * (0.35 + 0.65 * bow * spd + 0.3 * uFoam);
+            if (along > 24.0) hull = max(hull, (1.0 - smoothstep(0.0, 2.5, length(vec2(across, along - 25.0)))) * spd);
+          }
+          float wake = 0.0;
+          float s = -(along + 24.0);
+          if (s > 0.0) {
+            float w = 3.2 + s * 0.354;
+            float center = exp(-abs(across) / (2.5 + 0.06 * s)) * exp(-s / 140.0);
+            float arms = exp(-abs(abs(across) - w) / (1.2 + s * 0.02)) * exp(-s / 220.0) * 0.7;
+            wake = (center + arms) * spd;
+          }
+          float foam = clamp(crestFoam + (hull + wake) * smoothstep(0.35, 0.75, n2 + 0.25), 0.0, 1.0);
+          foam = max(foam, rings * 0.5);
+          vec3 lit = uSunCol * max(uSunDir.y, 0.0) * 0.6 + uAmb;
+          c = mix(c, vec3(0.92, 0.95, 0.97) * lit, foam * 0.9);
+          c += uFlash * vec3(0.55, 0.6, 0.75) * (0.25 + fres);
+          float fogF = 1.0 - exp(-uFogDen * uFogDen * dist * dist);
+          c = mix(c, uFogCol, clamp(fogF, 0.0, 1.0));
+          gl_FragColor = vec4(c, 1.0);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }`,
+    });
+  }
+  /** Polar grid: dense under the ship and camera, sparse toward the horizon. */
+  build(q) {
+    if (this.mesh) { scene.remove(this.mesh); this.mesh.geometry.dispose(); }
+    const A = q.ang, Rn = q.rings, pos = [], idx = [];
+    const rMax = 4200, r1 = 0.9, alpha = Math.log(rMax / r1 + 1) / Rn;
+    pos.push(0, 0, 0);
+    for (let j = 1; j <= Rn; j++) {
+      const r = r1 * (Math.exp(alpha * j) - 1);
+      for (let i = 0; i < A; i++) { const a = i / A * TAU; pos.push(Math.cos(a) * r, 0, Math.sin(a) * r); }
+    }
+    for (let i = 0; i < A; i++) idx.push(0, 1 + ((i + 1) % A), 1 + i);
+    for (let j = 1; j < Rn; j++) for (let i = 0; i < A; i++) {
+      const a = 1 + (j - 1) * A + i, b = 1 + (j - 1) * A + ((i + 1) % A), c = a + A, d = b + A;
+      idx.push(a, b, d, a, d, c);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
+    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), rMax + 50);
+    this.mesh = new THREE.Mesh(g, this.material);
+    this.mesh.frustumCulled = false;
+    scene.add(this.mesh);
+  }
+  follow(x, z) { const s = 2.0; this.mesh.position.set(Math.round(x / s) * s, 0, Math.round(z / s) * s); }
+}
+
+/* ============================================================================
+   4. SKY + ENVIRONMENT — procedural gradient sky, sun, cloud deck, stars
+   ============================================================================ */
+const sky = new THREE.Mesh(new THREE.SphereGeometry(6000, 48, 24), new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, fog: false,
+  uniforms: {
+    uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uZenith: { value: new THREE.Color() }, uHorizon: { value: new THREE.Color() }, uSunCol: { value: new THREE.Color() },
+    uCloudLit: { value: new THREE.Color(1, 1, 1) }, uCloudDark: { value: new THREE.Color(0.4, 0.43, 0.48) }, uCloud: { value: 0.3 }, uDark: { value: 0 },
+    uTime: { value: 0 }, uFlash: { value: 0 }, uNight: { value: 0 }, uWind: { value: new THREE.Vector2(0, 1) }, uOff: { value: new THREE.Vector2() },
+  },
+  vertexShader: 'varying vec3 vDir; void main(){ vDir = position; vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }',
+  fragmentShader: /* glsl */`
+    uniform vec3 uSunDir; uniform vec3 uZenith; uniform vec3 uHorizon; uniform vec3 uSunCol; uniform vec3 uCloudLit; uniform vec3 uCloudDark;
+    uniform float uCloud; uniform float uDark; uniform float uTime; uniform float uFlash; uniform float uNight; uniform vec2 uWind; uniform vec2 uOff;
+    varying vec3 vDir;
+    ${GLSL_NOISE}
+    void main(){
+      vec3 d = normalize(vDir);
+      float h = max(d.y, 0.0);
+      vec3 c = mix(uHorizon, uZenith, pow(h, 0.42));
+      float sd = max(dot(d, uSunDir), 0.0);
+      float vis = 1.0 - uCloud * 0.85;
+      c += uSunCol * (pow(sd, 1600.0) * 30.0 * step(0.0, uSunDir.y + 0.03) + pow(sd, 10.0) * 0.22 + pow(sd, 3.0) * 0.06) * vis;
+      if (uNight > 0.01) {
+        vec2 sp = floor(d.xz / (d.y + 0.25) * 260.0);
+        float star = step(0.9975, hash12(sp)) * smoothstep(0.05, 0.3, d.y);
+        c += vec3(0.85, 0.9, 1.0) * star * uNight * (1.0 - uCloud);
+      }
+      if (d.y > -0.02) {
+        vec2 uv = d.xz / (d.y + 0.09) * 0.55 + uOff;
+        float n = fbm(uv * 0.85 + uWind * uTime * 0.012);
+        float n2 = fbm(uv * 2.4 - uWind * uTime * 0.02 + 5.0);
+        float cov = smoothstep(1.05 - uCloud * 0.95, 1.25 - uCloud * 0.8, n + n2 * 0.25);
+        cov *= smoothstep(-0.02, 0.1, d.y);
+        float thick = clamp(n2 * 1.4 - 0.2 + uDark * 0.6, 0.0, 1.0);
+        vec3 cc = mix(uCloudLit, uCloudDark, thick);
+        cc += uSunCol * pow(sd, 6.0) * 0.35 * (1.0 - uDark) * (1.0 - thick);
+        c = mix(c, cc, cov * 0.96);
+        c += uFlash * vec3(0.75, 0.8, 1.0) * (0.25 + cov * 0.9);
+      }
+      c = mix(c, uHorizon, exp(-h * 9.0) * 0.55);
+      gl_FragColor = vec4(c, 1.0);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`,
+}));
+sky.frustumCulled = false; sky.renderOrder = -10;
+scene.add(sky);
+
+/* ---------- rain: GPU-animated streaks in a box that travels with the camera ---------- */
+class RainSystem {
+  constructor() {
+    const max = CONFIG.quality.high.rain;
+    const pos = new Float32Array(max * 2 * 3), seed = new Float32Array(max * 2 * 4);
+    for (let i = 0; i < max; i++) {
+      const s = [rng(), rng(), rng(), rng()];
+      for (let e = 0; e < 2; e++) { seed.set([s[0], s[1], s[2], e], (i * 2 + e) * 4); }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('aSeed', new THREE.BufferAttribute(seed, 4));
+    this.mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, fog: false,
+      uniforms: { uTime: { value: 0 }, uCam: { value: new THREE.Vector3() }, uWind: { value: new THREE.Vector2() }, uCol: { value: new THREE.Color(0.75, 0.8, 0.88) }, uAlpha: { value: 0.5 } },
+      vertexShader: /* glsl */`
+        attribute vec4 aSeed; uniform float uTime; uniform vec3 uCam; uniform vec2 uWind; varying float vA;
+        void main(){
+          vec3 box = vec3(110.0, 70.0, 110.0);
+          float fall = 11.0 + aSeed.z * 4.0;
+          vec3 p = vec3(aSeed.x, aSeed.y, aSeed.z) * box;
+          p.y = mod(p.y - uTime * fall, box.y);
+          p.xz += uWind * (box.y - p.y) / fall;
+          p.xz = mod(p.xz - uCam.xz + box.xz * 0.5, box.xz) - box.xz * 0.5 + uCam.xz;
+          p.y += uCam.y - box.y * 0.45;
+          vec3 v = vec3(uWind.x, -fall, uWind.y);
+          p -= v * aSeed.w * 0.045;
+          vA = 1.0 - aSeed.w * 0.7;
+          gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
+        }`,
+      fragmentShader: 'uniform vec3 uCol; uniform float uAlpha; varying float vA; void main(){ gl_FragColor = vec4(uCol, uAlpha * vA); }',
+    });
+    this.lines = new THREE.LineSegments(g, this.mat);
+    this.lines.frustumCulled = false; this.lines.renderOrder = 5;
+    scene.add(this.lines);
+    this.setCount(0);
+  }
+  setCount(n) { this.lines.geometry.setDrawRange(0, Math.floor(n) * 2); this.lines.visible = n > 1; }
+}
+
+/* ---------- spray: pooled soft particles thrown from the bow and hull ---------- */
+class SprayParticles {
+  constructor(max = 900) {
+    this.max = max; this.list = [];
+    const g = new THREE.BufferGeometry();
+    this.pos = new Float32Array(max * 3); this.alpha = new Float32Array(max); this.size = new Float32Array(max);
+    g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
+    g.setAttribute('aAlpha', new THREE.BufferAttribute(this.alpha, 1));
+    g.setAttribute('aSize', new THREE.BufferAttribute(this.size, 1));
+    this.mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, fog: false,
+      uniforms: { uCol: { value: new THREE.Color(0.92, 0.95, 0.98) }, uScale: { value: 400 } },
+      vertexShader: 'attribute float aAlpha; attribute float aSize; uniform float uScale; varying float vA; void main(){ vA = aAlpha; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = aSize * uScale / -mv.z; gl_Position = projectionMatrix * mv; }',
+      fragmentShader: 'uniform vec3 uCol; varying float vA; void main(){ vec2 c = gl_PointCoord - 0.5; float d = dot(c, c); if (d > 0.25) discard; gl_FragColor = vec4(uCol, vA * (1.0 - d * 4.0)); }',
+    });
+    this.points = new THREE.Points(g, this.mat); this.points.frustumCulled = false; this.points.renderOrder = 4;
+    scene.add(this.points);
+    for (let i = 0; i < max; i++) this.list.push({ alive: false, p: new THREE.Vector3(), v: new THREE.Vector3(), life: 0, max: 1, s: 1 });
+  }
+  emit(p, v, size = 1.2, life = 1.4) {
+    const s = this.list.find((x) => !x.alive); if (!s) return;
+    s.alive = true; s.p.copy(p); s.v.copy(v); s.life = 0; s.max = life * rnd(0.7, 1.3); s.s = size * rnd(0.6, 1.4);
+  }
+  update(dt) {
+    this.list.forEach((s, i) => {
+      if (s.alive) { s.life += dt; s.v.y -= 9.81 * dt * 0.8; s.v.multiplyScalar(1 - dt * 0.4); s.p.addScaledVector(s.v, dt); if (s.life > s.max) s.alive = false; }
+      const k = s.alive ? 1 - s.life / s.max : 0;
+      this.pos[i * 3] = s.p.x; this.pos[i * 3 + 1] = s.p.y; this.pos[i * 3 + 2] = s.p.z;
+      this.alpha[i] = k * 0.55; this.size[i] = s.s * (1 + (1 - k) * 1.5);
+    });
+    const g = this.points.geometry; g.attributes.position.needsUpdate = true; g.attributes.aAlpha.needsUpdate = true; g.attributes.aSize.needsUpdate = true;
+  }
+}
+
+/* ---------- lightning: jagged bolt, sky/sea/ship flash, delayed thunder ---------- */
+class Lightning {
+  constructor() {
+    this.flash = 0; this.timer = 6; this.boltT = 0;
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(40 * 3), 3));
+    this.bolt = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xeef3ff, transparent: true, opacity: 1, fog: false }));
+    this.bolt.visible = false; this.bolt.frustumCulled = false;
+    scene.add(this.bolt);
+    this.flashEl = document.getElementById('flash');
+  }
+  strike(center) {
+    const a = rnd(0, TAU), r = rnd(260, 900);
+    const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
+    const p = this.bolt.geometry.attributes.position;
+    let px = x, pz = z;
+    for (let i = 0; i < 40; i++) { const y = lerp(420, 0, i / 39); px += rnd(-14, 14); pz += rnd(-14, 14); p.setXYZ(i, px, y, pz); }
+    p.needsUpdate = true;
+    this.bolt.visible = true; this.boltT = 0.18; this.flash = 1;
+    flashLight.position.set(x - center.x, 400, z - center.z).normalize().multiplyScalar(100).add(center);
+    flashLight.target.position.copy(center);
+    AUDIO.thunder(r / 340);
+  }
+  update(dt, rate, center) {
+    if (rate > 0.01) { this.timer -= dt * rate; if (this.timer <= 0) { this.strike(center); this.timer = rnd(4, 11); } }
+    this.boltT -= dt; if (this.boltT <= 0) this.bolt.visible = false;
+    this.flash = Math.max(0, this.flash - dt * 3.2);
+    const f = this.flash > 0 ? this.flash * (0.6 + 0.4 * Math.sin(this.flash * 40)) : 0;
+    this.value = f;
+    flashLight.intensity = f * 5;
+    this.flashEl.style.opacity = (f * 0.16).toFixed(3);
+  }
+}
+
+/* ============================================================================
+   5. SHIP BUILDER — a three-masted barque after the reference photo:
+   black hull, red boot below the waterline, white deckhouses, square-rigged
+   fore and main masts, fore-and-aft mizzen with spanker, three headsails.
+   ============================================================================ */
+const MAT = {
+  hull: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.42, metalness: 0.15 }),
+  white: new THREE.MeshStandardMaterial({ color: '#eceae4', roughness: 0.55 }),
+  cream: new THREE.MeshStandardMaterial({ color: '#e4dfd2', roughness: 0.65, side: THREE.DoubleSide }),
+  wood: new THREE.MeshStandardMaterial({ color: '#6e4c33', roughness: 0.55 }),
+  mast: new THREE.MeshStandardMaterial({ color: '#5d4a39', roughness: 0.6 }),
+  spar: new THREE.MeshStandardMaterial({ color: '#3d332b', roughness: 0.55 }),
+  metal: new THREE.MeshStandardMaterial({ color: '#b8bdc2', roughness: 0.35, metalness: 0.85 }),
+  brass: new THREE.MeshStandardMaterial({ color: '#b08a46', roughness: 0.3, metalness: 0.9 }),
+  dark: new THREE.MeshStandardMaterial({ color: '#141a24', roughness: 0.3, metalness: 0.2 }),
+  glass: new THREE.MeshStandardMaterial({ color: '#1b2a3c', roughness: 0.1, metalness: 0.5 }),
+  rope: new THREE.MeshStandardMaterial({ color: '#2e2620', roughness: 0.9 }),
+  ropeLight: new THREE.MeshStandardMaterial({ color: '#8a7759', roughness: 0.95 }),
+  sail: new THREE.MeshStandardMaterial({ color: '#f0ede4', roughness: 0.92, side: THREE.DoubleSide }),
+  boat: new THREE.MeshStandardMaterial({ color: '#f2f0ea', roughness: 0.5 }),
+  boatCover: new THREE.MeshStandardMaterial({ color: '#1f3355', roughness: 0.8 }),
+  crate: new THREE.MeshStandardMaterial({ color: '#7d5a3a', roughness: 0.85 }),
+  strap: new THREE.MeshStandardMaterial({ color: '#c9a227', roughness: 0.7 }),
+  lamp: new THREE.MeshStandardMaterial({ color: '#fff3d0', emissive: new THREE.Color('#ffcf7a'), emissiveIntensity: 0, roughness: 0.4 }),
+};
+// Hull paint: crisp boot-top and sheer lines computed per fragment from ship-local height.
+MAT.hull.onBeforeCompile = (sh) => {
+  sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vLocal;\nattribute float aTop;\nvarying float vTop;')
+    .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLocal = position; vTop = aTop;');
+  sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vLocal; varying float vTop;\n' + GLSL_NOISE)
+    .replace('#include <color_fragment>', `#include <color_fragment>
+      float y = vLocal.y;
+      vec3 navy = vec3(0.022, 0.03, 0.05);
+      vec3 boot = vec3(0.36, 0.07, 0.055);
+      vec3 whiteL = vec3(0.86, 0.86, 0.83);
+      vec3 hc = navy;
+      if (y < -3.12) hc = boot; else if (y < -2.92) hc = whiteL;
+      if (y > vTop - 0.2) hc = whiteL;
+      float n = vnoise(vLocal.zy * vec2(0.6, 3.0)) * 0.5 + vnoise(vLocal.zy * 6.0) * 0.5;
+      hc *= 0.92 + n * 0.14;
+      diffuseColor.rgb = hc;`)
+    .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = vLocal.y < -3.12 ? 0.7 : 0.38;');
+};
+
+function planksTexture() {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 1024;
+  const g = c.getContext('2d'), r = mulberry32(42);
+  const pw = 32;
+  for (let x = 0; x < 512; x += pw) {
+    let y = -r() * 400;
+    while (y < 1024) {
+      const len = 300 + r() * 380;
+      const tone = 0.82 + r() * 0.3;
+      g.fillStyle = `rgb(${Math.round(176 * tone)},${Math.round(136 * tone)},${Math.round(92 * tone)})`;
+      g.fillRect(x, y, pw, len);
+      g.globalAlpha = 0.12;
+      for (let k = 0; k < 6; k++) { g.fillStyle = r() < 0.5 ? '#5a3d22' : '#e6c79c'; g.fillRect(x + r() * pw, y, 1, len); }
+      g.globalAlpha = 1;
+      g.fillStyle = '#3b2a1c'; g.fillRect(x, y + len - 2, pw, 2);
+      y += len;
+    }
+    g.fillStyle = '#2e2116'; g.fillRect(x, 0, 2, 1024);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  t.repeat.set(1 / 2.4, 1 / 7.5);
+  return t;
+}
+MAT.deck = new THREE.MeshStandardMaterial({ map: planksTexture(), roughness: 0.78, color: 0xffffff });
+
+function ensignTexture() {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = '#c8302a'; g.fillRect(0, 0, 256, 128);
+  // canton: a simplified union flag
+  g.save(); g.beginPath(); g.rect(0, 0, 128, 64); g.clip();
+  g.fillStyle = '#1f3c88'; g.fillRect(0, 0, 128, 64);
+  g.strokeStyle = '#ffffff'; g.lineWidth = 13; g.beginPath(); g.moveTo(0, 0); g.lineTo(128, 64); g.moveTo(128, 0); g.lineTo(0, 64); g.stroke();
+  g.strokeStyle = '#c8302a'; g.lineWidth = 4.5; g.beginPath(); g.moveTo(0, 0); g.lineTo(128, 64); g.moveTo(128, 0); g.lineTo(0, 64); g.stroke();
+  g.fillStyle = '#ffffff'; g.fillRect(52, 0, 24, 64); g.fillRect(0, 22, 128, 20);
+  g.fillStyle = '#c8302a'; g.fillRect(57, 0, 14, 64); g.fillRect(0, 26, 128, 12);
+  g.restore();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+
+/* ---------- geometry helpers ---------- */
+function roundedBox(w, h, d, r, seg = 2) {
+  const g = new THREE.BoxGeometry(w, h, d, seg, seg, seg), p = g.attributes.position, v = new THREE.Vector3(), c = new THREE.Vector3();
+  const inner = new THREE.Vector3(w / 2 - r, h / 2 - r, d / 2 - r);
+  for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); c.copy(v).clamp(inner.clone().negate(), inner); const dir = v.clone().sub(c); if (dir.lengthSq() > 0) dir.normalize(); v.copy(c).addScaledVector(dir, r); p.setXYZ(i, v.x, v.y, v.z); }
+  g.computeVertexNormals(); return g;
+}
+/** Cylinder between two points (used for spars and posts). */
+function spar(a, b, r0, r1 = r0, seg = 10, mat = MAT.spar) {
+  const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), d = B.clone().sub(A), L = d.length();
+  const g = new THREE.CylinderGeometry(r1, r0, L, seg, 1);
+  const m = new THREE.Mesh(g, mat);
+  m.position.copy(A).addScaledVector(d, 0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+  m.castShadow = true; m.receiveShadow = true;
+  return m;
+}
+/** Builds one merged mesh of many thin rope tubes. */
+class RopeBatch {
+  constructor() { this.pos = []; this.nor = []; this.idx = []; this.n = 0; }
+  add(a, b, r = 0.035, sides = 5) {
+    const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), d = B.clone().sub(A).normalize();
+    const t = Math.abs(d.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+    const u = new THREE.Vector3().crossVectors(d, t).normalize(), v = new THREE.Vector3().crossVectors(d, u);
+    const base = this.n;
+    for (let i = 0; i < sides; i++) {
+      const ang = i / sides * TAU, n = u.clone().multiplyScalar(Math.cos(ang)).addScaledVector(v, Math.sin(ang));
+      for (const P of [A, B]) { this.pos.push(P.x + n.x * r, P.y + n.y * r, P.z + n.z * r); this.nor.push(n.x, n.y, n.z); }
+    }
+    for (let i = 0; i < sides; i++) { const a0 = base + i * 2, b0 = base + ((i + 1) % sides) * 2; this.idx.push(a0, b0, a0 + 1, b0, b0 + 1, a0 + 1); }
+    this.n += sides * 2;
+  }
+  /** Sagging rope through n segments. */
+  addSag(a, b, sag, r = 0.03, n = 6) {
+    let prev = a;
+    for (let i = 1; i <= n; i++) { const t = i / n; const p = [lerp(a[0], b[0], t), lerp(a[1], b[1], t) - Math.sin(Math.PI * t) * sag, lerp(a[2], b[2], t)]; this.add(prev, p, r); prev = p; }
+  }
+  mesh(mat = MAT.rope) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nor, 3)); g.setIndex(this.idx);
+    const m = new THREE.Mesh(g, mat); m.castShadow = true; return m;
+  }
+}
+
+function keelDepth(z) {
+  let D = CONFIG.ship.keel;
+  if (z > 10) D -= Math.pow((z - 10) / 15, 1.6) * 4.2;
+  if (z < -14) D -= Math.pow((-z - 14) / 11, 1.5) * 3.6;
+  return Math.max(D, 0.6);
+}
+function sectionExp(z) { if (z > 8) return lerp(2.8, 1.25, smooth((z - 8) / 17)); if (z < -12) return lerp(2.8, 2.0, smooth((-z - 12) / 13)); return 2.8; }
+function bulwarkTop(z) { return 1.1 + 1.3 * Math.pow(Math.max(0, (z - 12) / 13), 2) + 0.5 * Math.pow(Math.max(0, (-z - 16) / 9), 2); }
+/** Hull half-width at ship-local height y (y <= 0) for a station. */
+function hullHalfAt(z, y) {
+  const b = deckHalf(z), D = keelDepth(z), n = sectionExp(z);
+  if (y >= 0) return b;
+  const s = clamp(Math.pow(Math.min(1, -y / D), n / 2), 0, 1);
+  return b * Math.pow(Math.sqrt(1 - s * s), 2 / n);
+}
+
+function buildHull() {
+  const S = 140, M = 16, pos = [], tops = [], idx = [];
+  const ringLen = (M + 2) * 2 - 1;
+  for (let i = 0; i <= S; i++) {
+    const t = i / S, z = -25 + 50 * (0.5 - 0.5 * Math.cos(Math.PI * t));
+    const b = Math.max(deckHalf(z), 0.05), D = keelDepth(z), n = sectionExp(z), top = bulwarkTop(z);
+    const side = [[b + 0.03, top], [b, 0]];
+    for (let j = 1; j <= M; j++) { const th = j / M * Math.PI / 2; side.push([b * Math.pow(Math.cos(th), 2 / n), -D * Math.pow(Math.sin(th), 2 / n)]); }
+    const ring = side.slice();                              // port side, top to keel (x > 0)
+    for (let j = side.length - 2; j >= 0; j--) ring.push([-side[j][0], side[j][1]]); // starboard, keel to top
+    for (const [x, y] of ring) { pos.push(x, y, z); tops.push(top); }
+  }
+  for (let i = 0; i < S; i++) for (let j = 0; j < ringLen - 1; j++) {
+    const a = i * ringLen + j, b = a + 1, c = a + ringLen, d = c + 1;
+    idx.push(a, c, b, b, c, d);
+  }
+  // stern transom cap
+  const last = 0, center = pos.length / 3;
+  let cy = 0; for (let j = 0; j < ringLen; j++) cy += pos[(last + j) * 3 + 1]; cy /= ringLen;
+  pos.push(0, cy, -25); tops.push(bulwarkTop(-25));
+  for (let j = 0; j < ringLen - 1; j++) idx.push(center, last + j, last + j + 1);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aTop', new THREE.Float32BufferAttribute(tops, 1));
+  g.setIndex(idx); g.computeVertexNormals();
+  // orientation check: the midship side normal must point outward (+x on the port side)
+  const nrm = g.attributes.normal, probe = Math.floor(S / 2) * ringLen + 3;
+  if (nrm.getX(probe) < 0) { for (let k = 0; k < idx.length; k += 3) { const t2 = idx[k]; idx[k] = idx[k + 1]; idx[k + 1] = t2; } g.setIndex(idx); g.computeVertexNormals(); }
+  const m = new THREE.Mesh(g, MAT.hull); m.castShadow = true; m.receiveShadow = true;
+  return m;
+}
+
+function buildDeck() {
+  const pts = [];
+  for (let i = 0; i <= 60; i++) { const z = lerp(-24.75, 24.2, i / 60); pts.push(new THREE.Vector2(Math.max(deckHalf(z) - 0.12, 0.05), -z)); }
+  for (let i = 60; i >= 0; i--) { const z = lerp(-24.75, 24.2, i / 60); pts.push(new THREE.Vector2(-Math.max(deckHalf(z) - 0.12, 0.05), -z)); }
+  if (THREE.ShapeUtils.isClockWise(pts)) pts.reverse();
+  const g = new THREE.ShapeGeometry(new THREE.Shape(pts), 1);
+  g.rotateX(-Math.PI / 2); g.translate(0, 0.02, 0);
+  const m = new THREE.Mesh(g, MAT.deck); m.receiveShadow = true;
+  return m;
+}
+
+function buildBulwarks(group) {
+  const inner = [], cap = [], innerIdx = [], capIdx = [];
+  const N = 120;
+  for (const side of [1, -1]) {
+    const bi = inner.length / 3, bc = cap.length / 3;
+    for (let i = 0; i <= N; i++) {
+      const z = lerp(-24.8, 24.6, i / N), b = deckHalf(z), top = bulwarkTop(z);
+      inner.push(side * (b - 0.16), 0, z, side * (b - 0.16), top - 0.04, z);
+      cap.push(side * (b + 0.08), top + 0.07, z, side * Math.max(b - 0.24, 0.02), top + 0.07, z);
+    }
+    for (let i = 0; i < N; i++) {
+      const a = bi + i * 2; innerIdx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+      const c = bc + i * 2; capIdx.push(c, c + 2, c + 1, c + 1, c + 2, c + 3);
+    }
+  }
+  const gi = new THREE.BufferGeometry(); gi.setAttribute('position', new THREE.Float32BufferAttribute(inner, 3)); gi.setIndex(innerIdx); gi.computeVertexNormals();
+  const gc = new THREE.BufferGeometry(); gc.setAttribute('position', new THREE.Float32BufferAttribute(cap, 3)); gc.setIndex(capIdx); gc.computeVertexNormals();
+  const mi = new THREE.Mesh(gi, MAT.cream); mi.receiveShadow = true;
+  const mc = new THREE.Mesh(gc, new THREE.MeshStandardMaterial({ color: '#6e4c33', roughness: 0.5, side: THREE.DoubleSide })); mc.castShadow = true;
+  group.add(mi, mc);
+}
+
+/** A hinged cabin door on the forward face of a deckhouse. Returns a controller. */
+function makeDoor(parent, x, y, z, faceSign = 1) {
+  const frame = new THREE.Mesh(roundedBox(1.12, 2.08, 0.08, 0.02), MAT.wood);
+  frame.position.set(x, y + 1.02, z + faceSign * 0.02); parent.add(frame);
+  const back = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.94), new THREE.MeshBasicMaterial({ color: '#0a0f17' }));
+  back.position.set(x, y + 0.99, z + faceSign * 0.065); if (faceSign < 0) back.rotation.y = Math.PI; parent.add(back);
+  const hinge = new THREE.Group(); hinge.position.set(x - 0.45, y + 0.02, z + faceSign * 0.085); parent.add(hinge);
+  const leaf = new THREE.Mesh(roundedBox(0.9, 1.94, 0.05, 0.015), new THREE.MeshStandardMaterial({ color: '#7a5434', roughness: 0.55 }));
+  leaf.position.set(0.45, 0.97, 0); leaf.castShadow = true; hinge.add(leaf);
+  const port = new THREE.Mesh(new THREE.CircleGeometry(0.12, 16), MAT.glass); port.position.set(0.45, 1.45, faceSign * 0.03); if (faceSign < 0) port.rotation.y = Math.PI; hinge.add(port);
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), MAT.brass); knob.position.set(0.8, 0.95, faceSign * 0.05); hinge.add(knob);
+  return { hinge, open: 0, target: 0, sign: faceSign, update(dt) { this.open += clamp(this.target - this.open, -dt * 2.2, dt * 2.2); this.hinge.rotation.y = -this.open * 1.7 * this.sign; } };
+}
+
+function buildDeckhouses(group, ship) {
+  // midship deckhouse
+  const mid = new THREE.Mesh(roundedBox(5.0, 2.3, 11, 0.12, 3), MAT.white);
+  mid.position.set(0, 1.15, -1.5); mid.castShadow = true; mid.receiveShadow = true; group.add(mid);
+  const roof = new THREE.Mesh(roundedBox(5.3, 0.12, 11.3, 0.05), MAT.wood); roof.position.set(0, 2.36, -1.5); roof.castShadow = true; group.add(roof);
+  const sky1 = new THREE.Mesh(roundedBox(1.6, 0.5, 2.2, 0.06), MAT.white); sky1.position.set(0, 2.66, -4.6); group.add(sky1);
+  const skyG = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.05, 1.9), MAT.glass); skyG.position.set(0, 2.92, -4.6); group.add(skyG);
+  for (const sx of [1, -1]) for (let k = 0; k < 4; k++) {
+    const w = new THREE.Mesh(roundedBox(0.05, 0.55, 0.9, 0.02), MAT.glass); w.position.set(sx * 2.51, 1.45, -5.5 + k * 2.6); group.add(w);
+  }
+  ship.doors.mid = makeDoor(group, 0, 0, 4.0, 1);
+  // aft deckhouse (the raised stern structure)
+  const pts = [];
+  const zf = -17, za = -24.0;
+  for (let i = 0; i <= 12; i++) { const z = lerp(zf, za, i / 12); pts.push(new THREE.Vector2(deckHalf(z) - 0.95, z)); }
+  for (let i = 12; i >= 0; i--) { const z = lerp(zf, za, i / 12); pts.push(new THREE.Vector2(-(deckHalf(z) - 0.95), z)); }
+  const shape = new THREE.Shape(pts);
+  const eg = new THREE.ExtrudeGeometry(shape, { depth: 2.6, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.06, bevelSegments: 2 });
+  eg.rotateX(Math.PI / 2); eg.translate(0, 2.6, 0); eg.computeVertexNormals();
+  const aft = new THREE.Mesh(eg, MAT.white); aft.castShadow = true; aft.receiveShadow = true; group.add(aft);
+  const roofPts = pts.map((p) => new THREE.Vector2(p.x * 1.03, p.y));
+  const rg = new THREE.ExtrudeGeometry(new THREE.Shape(roofPts), { depth: 0.1, bevelEnabled: false }); rg.rotateX(Math.PI / 2); rg.translate(0, 2.72, 0);
+  const aroof = new THREE.Mesh(rg, MAT.wood); aroof.receiveShadow = true; group.add(aroof);
+  // rail around the poop
+  const rails = new RopeBatch();
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], q = pts[(i + 1) % pts.length];
+    if (Math.abs(p.y - zf) < 0.01 && Math.abs(q.y - zf) < 0.01 && Math.abs(p.x) < 1.3 && Math.abs(q.x) < 1.3) continue;
+    rails.add([p.x, 2.72, p.y], [p.x, 3.62, p.y], 0.03, 5);
+    rails.add([p.x, 3.62, p.y], [q.x, 3.62, q.y], 0.035, 5);
+    rails.add([p.x, 3.2, p.y], [q.x, 3.2, q.y], 0.02, 4);
+  }
+  group.add(rails.mesh(MAT.metal));
+  for (const sx of [1, -1]) for (let k = 0; k < 3; k++) {
+    const pz = -18.6 - k * 1.8, px = sx * (deckHalf(pz) - 0.93);
+    const pr = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.035, 8, 18), MAT.brass); pr.position.set(px, 1.55, pz); pr.rotation.y = Math.PI / 2; group.add(pr);
+    const gl = new THREE.Mesh(new THREE.CircleGeometry(0.15, 16), MAT.glass); gl.position.set(px + sx * 0.01, 1.55, pz); gl.rotation.y = sx * Math.PI / 2; group.add(gl);
+  }
+  for (let k = 0; k < 3; k++) { const w = new THREE.Mesh(roundedBox(0.8, 0.5, 0.05, 0.02), MAT.glass); w.position.set(-2.2 + k * 2.2, 1.7, zf + 0.06); if (k !== 1) group.add(w); }
+  ship.doors.aft = makeDoor(group, 0, 0, zf + 0.04, 1);
+  // lifeboats in chocks on the poop
+  for (const sx of [1, -1]) {
+    const boat = new THREE.Group();
+    const h = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 10, 0, TAU, Math.PI / 2, Math.PI / 2), MAT.boat); h.scale.set(0.85, 0.55, 2.6); boat.add(h);
+    const cv = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 8, 0, TAU, 0, Math.PI / 2), MAT.boatCover); cv.scale.set(0.82, 0.2, 2.5); boat.add(cv);
+    const strip = new THREE.Mesh(new THREE.TorusGeometry(1, 0.03, 6, 40), MAT.wood); strip.rotation.x = Math.PI / 2; strip.scale.set(0.86, 2.62, 1); boat.add(strip);
+    boat.position.set(sx * 1.6, 3.4, -20.2); boat.traverse((o) => { o.castShadow = true; });
+    group.add(boat);
+    for (const cz of [-21.6, -18.8]) { const ch = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.4, 0.2), MAT.wood); ch.position.set(sx * 1.6, 2.95, cz); group.add(ch); }
+  }
+  // forward cargo hatch with grating
+  const hatch = new THREE.Mesh(roundedBox(2.6, 0.55, 3.0, 0.05), MAT.wood); hatch.position.set(0, 0.29, 7.5); hatch.castShadow = true; group.add(hatch);
+  const grate = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.04, 2.7), new THREE.MeshStandardMaterial({ color: '#9a7650', roughness: 0.8 })); grate.position.set(0, 0.58, 7.5); group.add(grate);
+  // cowl vents
+  for (const [vx, vz] of [[1.6, 5.2], [-1.6, 5.2], [1.4, -9.0]]) {
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 1.2, 12), MAT.white); pipe.position.set(vx, 0.6, vz); group.add(pipe);
+    const cowl = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.16, 10, 14, Math.PI / 2), MAT.white); cowl.position.set(vx, 1.2, vz - 0.22); cowl.rotation.y = Math.PI / 2; group.add(cowl);
+    const mouth = new THREE.Mesh(new THREE.CircleGeometry(0.15, 12), MAT.dark); mouth.position.set(vx, 1.42, vz - 0.37); mouth.rotation.y = Math.PI; group.add(mouth);
+  }
+}
+
+function buildHelm(group, ship) {
+  const ped = new THREE.Mesh(roundedBox(0.36, 0.95, 0.36, 0.05), MAT.wood); ped.position.set(0, 0.48, -14.2); ped.castShadow = true; group.add(ped);
+  const wheel = new THREE.Group(); wheel.position.set(0, 1.15, -14.42);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.035, 8, 40), MAT.wood); wheel.add(rim);
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.14, 12), MAT.brass); hub.rotation.x = Math.PI / 2; wheel.add(hub);
+  for (let k = 0; k < 8; k++) {
+    const a = k / 8 * TAU, sp = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, 0.86, 6), MAT.wood);
+    sp.position.set(Math.cos(a) * 0.43, Math.sin(a) * 0.43, 0); sp.rotation.z = a - Math.PI / 2; wheel.add(sp);
+  }
+  wheel.traverse((o) => { o.castShadow = true; });
+  group.add(wheel); ship.wheel = wheel;
+  const bin = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 1.0, 14), MAT.wood); bin.position.set(0, 0.5, -13.2); group.add(bin);
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 8, 0, TAU, 0, Math.PI / 2), MAT.brass); dome.position.set(0, 1.0, -13.2); group.add(dome);
+}
+
+function buildDeckGear(group, ship) {
+  // windlass / capstan at the bow
+  const wl = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 2.2, 16), MAT.dark); wl.rotation.z = Math.PI / 2; wl.position.set(0, 0.55, 19.6); group.add(wl);
+  for (const sx of [1, -1]) { const dr = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.25, 18), MAT.metal); dr.rotation.z = Math.PI / 2; dr.position.set(sx * 1.2, 0.55, 19.6); group.add(dr); }
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.5, 0.9, 16), MAT.wood); cap.position.set(0, 0.45, -9.6); group.add(cap);
+  // bitts
+  for (const [bx, bz] of [[2.6, 21.5], [-2.6, 21.5], [3.9, -19.5], [-3.9, -19.5]]) { const b = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 0.6, 10), MAT.dark); b.position.set(bx, 0.3, bz); group.add(b); }
+  // pin rails with belaying pins and coiled lines at every rope / sail station
+  ship.pinRails.forEach(([px, pz]) => {
+    const side = Math.sign(px), x = px + side * 0.25;
+    const rail = new THREE.Mesh(roundedBox(0.16, 0.12, 2.4, 0.03), MAT.wood); rail.position.set(x, 0.85, pz); group.add(rail);
+    for (let k = 0; k < 6; k++) {
+      const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.03, 0.4, 6), MAT.wood); pin.position.set(x, 0.9, pz - 1.0 + k * 0.4); group.add(pin);
+      const coil = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.035, 6, 16), MAT.ropeLight); coil.scale.set(1, 1.7, 1); coil.position.set(x - side * 0.04, 0.62, pz - 1.0 + k * 0.4); coil.rotation.y = Math.PI / 2; group.add(coil);
+    }
+  });
+  // loose deck equipment the crew lashes down in heavy weather
+  ship.equipment.forEach((eq) => {
+    const g = new THREE.Group(); g.position.set(eq.pos[0], 0, eq.pos[1]);
+    const crate = new THREE.Mesh(roundedBox(0.8, 0.7, 0.8, 0.04), MAT.crate); crate.position.y = 0.35; crate.castShadow = true; g.add(crate);
+    for (let k = 0; k < 2; k++) { const br = new THREE.Mesh(new THREE.LatheGeometry([0.22, 0.27, 0.28, 0.27, 0.22].map((r, i) => new THREE.Vector2(r, i * 0.2)), 14), MAT.crate); br.position.set(0, 0, eq.dz * (0.75 + k * 0.6)); br.castShadow = true; g.add(br); }
+    const straps = new THREE.Group();
+    for (const sz of [-0.2, 0.2]) { const s = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.74, 0.06), MAT.strap); s.position.set(0, 0.35, sz); straps.add(s); }
+    const lash = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 1.9), MAT.strap); lash.position.set(0, 0.62, eq.dz * 0.6); straps.add(lash);
+    straps.visible = false; g.add(straps);
+    eq.straps = straps; eq.group = g; eq.secured = 0;
+    group.add(g);
+  });
+}
+
+/* ---------- masts, yards, sails, rigging ---------- */
+const MASTS = {
+  fore: { z: 12.5, top: 34, j1: 12.2, j2: 22.4, yards: [[11.4, 19.5], [15.8, 17.2], [19.9, 15.6], [24.7, 12.2], [29.3, 9.2]] },
+  main: { z: -1.0, top: 37, j1: 13.4, j2: 24.2, yards: [[12.6, 21.0], [17.2, 18.6], [21.5, 16.8], [26.5, 13.2], [31.3, 9.8]] },
+  mizzen: { z: -12.0, top: 27.5, j1: 13.8, j2: 20.5, yards: [] },
+};
+function buildMasts(group, ship) {
+  const rope = new RopeBatch(), rat = [];
+  for (const [name, m] of Object.entries(MASTS)) {
+    const base = name === 'main' ? 2.3 : 0;
+    group.add(spar([0, base - 0.1, m.z], [0, m.j1 + 0.6, m.z], 0.36, 0.3, 14, MAT.mast));
+    group.add(spar([0, m.j1 - 1.0, m.z - 0.55], [0, m.j2 + 0.5, m.z - 0.55], 0.25, 0.2, 12, MAT.mast));
+    group.add(spar([0, m.j2 - 0.8, m.z - 0.95], [0, m.top, m.z - 0.95], 0.17, 0.09, 10, MAT.mast));
+    const truck = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), MAT.white); truck.position.set(0, m.top + 0.1, m.z - 0.95); group.add(truck);
+    const topP = new THREE.Mesh(roundedBox(3.0, 0.12, 2.0, 0.04), MAT.spar); topP.position.set(0, m.j1, m.z - 0.3); topP.castShadow = true; group.add(topP);
+    for (const sx of [1, -1]) group.add(spar([sx * 1.6, m.j2, m.z - 0.75], [0, m.j2, m.z - 0.75], 0.06, 0.06, 6));
+    // lower shrouds with ratlines
+    const chainZ = [-2.4, -1.4, -0.4, 0.6];
+    for (const sx of [1, -1]) {
+      const pts = chainZ.map((dz) => { const z = m.z + dz; return [[sx * (deckHalf(z) + 0.06), bulwarkTop(z) - 0.3, z], [sx * 1.35, m.j1 - 0.1, m.z - 0.3 + dz * 0.2]]; });
+      pts.forEach(([a, b]) => rope.add(a, b, 0.04));
+      for (let y = 1.6; y < m.j1 - 1.2; y += 0.52) {
+        for (let k = 0; k < pts.length - 1; k++) {
+          const p = (pp) => { const [a, b] = pp; const t = (y - a[1]) / (b[1] - a[1]); return [lerp(a[0], b[0], t), y, lerp(a[2], b[2], t)]; };
+          const A = p(pts[k]), B = p(pts[k + 1]); rat.push(...A, ...B);
+        }
+      }
+      // topmast and topgallant shrouds
+      for (const dz of [-0.9, 0, 0.6]) rope.add([sx * 1.4, m.j1 + 0.05, m.z - 0.3 + dz], [sx * 0.25, m.j2 - 0.4, m.z - 0.55], 0.03);
+      for (const dz of [-0.3, 0.3]) rope.add([sx * 1.55, m.j2, m.z - 0.75 + dz], [sx * 0.12, m.top - 1.5, m.z - 0.95], 0.025);
+      // backstays to the hull side
+      rope.add([sx * 0.15, m.top - 1.2, m.z - 0.95], [sx * (deckHalf(m.z - 7) + 0.05), bulwarkTop(m.z - 7) - 0.3, m.z - 7], 0.03);
+      rope.add([sx * 0.2, m.j2, m.z - 0.6], [sx * (deckHalf(m.z - 4.5) + 0.05), bulwarkTop(m.z - 4.5) - 0.3, m.z - 4.5], 0.035);
+    }
+    // yards with footropes and lifts
+    ship.yards[name] = [];
+    m.yards.forEach(([h, w], i) => {
+      const yg = new THREE.Group(); yg.position.set(0, h, m.z + (i === 0 ? 0.42 : i < 3 ? -0.1 : -0.5)); group.add(yg);
+      const L = w / 2;
+      const yard = spar([-L, 0, 0], [L, 0, 0], 0.11 - i * 0.012, 0.11 - i * 0.012, 8); yg.add(yard);
+      const arms = spar([L, 0, 0], [L + 0.4, 0, 0], 0.05, 0.03, 6); yg.add(arms);
+      const arms2 = spar([-L, 0, 0], [-L - 0.4, 0, 0], 0.05, 0.03, 6); yg.add(arms2);
+      const yr = new RopeBatch();
+      yr.addSag([-L * 0.95, -0.15, 0.15], [L * 0.95, -0.15, 0.15], 0.55, 0.02, 10);
+      const mastTopRel = (i < 4 ? MASTS[name].yards[i + 1]?.[0] ?? m.top : m.top) - h;
+      yr.add([L, 0, 0], [0.2, Math.min(mastTopRel, 4.5), -0.3], 0.02); yr.add([-L, 0, 0], [-0.2, Math.min(mastTopRel, 4.5), -0.3], 0.02);
+      yg.add(yr.mesh());
+      ship.yards[name].push({ group: yg, width: w, height: h, idx: i });
+    });
+  }
+  // bowsprit and jib boom
+  group.add(spar([0, 1.6, 22.5], [0, 4.55, 36.5], 0.34, 0.24, 12, MAT.mast));
+  group.add(spar([0, 4.2, 34.0], [0, 5.5, 40.2], 0.16, 0.09, 10, MAT.mast));
+  rope.add([0, 4.4, 36.4], [0, -1.8, 24.6], 0.05); rope.add([0, 5.4, 40.0], [0, 3.0, 30.5], 0.03);
+  for (const sx of [1, -1]) rope.add([0, 4.4, 36.0], [sx * 1.4, 1.6, 23.3], 0.035);
+  // stays (these also carry the headsails and staysails)
+  ship.stays = {
+    foreStay: [[0, 12.0, 12.2], [0, 2.6, 26.0]], innerJib: [[0, 22.0, 12.0], [0, 3.6, 31.0]], outerJib: [[0, 27.5, 11.8], [0, 4.5, 36.0]], flying: [[0, 33.6, 11.6], [0, 5.5, 40.1]],
+    mainStay: [[0, 13.2, -0.6], [0, 1.2, 10.8]], mainTop: [[0, 23.8, -1.3], [0, 12.4, 12.0]], mainTg: [[0, 30.8, -1.8], [0, 21.8, 11.8]], mainRoyal: [[0, 36.4, -1.9], [0, 33.0, 11.6]],
+    mizStay: [[0, 13.6, -12.2], [0, 2.6, -2.2]], mizTop: [[0, 26.8, -12.8], [0, 23.4, -1.6]],
+  };
+  for (const s of Object.values(ship.stays)) rope.add(s[0], s[1], 0.045);
+  // mizzen gaff and boom (they swing with the spanker)
+  const gaff = new THREE.Group(); gaff.position.set(0, 13.6, -12.35); group.add(gaff);
+  gaff.add(spar([0, 0, 0], [0, 3.6, -8.4], 0.12, 0.08, 8));
+  const boom = new THREE.Group(); boom.position.set(0, 3.2, -12.35); group.add(boom);
+  boom.add(spar([0, 0, 0], [0, 0.35, -11.2], 0.15, 0.1, 8));
+  ship.gaff = gaff; ship.boom = boom;
+  const rm = rope.mesh(); group.add(rm);
+  const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(rat, 3));
+  group.add(new THREE.LineSegments(rg, new THREE.LineBasicMaterial({ color: '#2e2620' })));
+}
+
+/** Portholes along both sides, instanced (two instanced meshes: brass rims and dark glass). */
+function buildPortholes(group) {
+  const list = [];
+  for (let z = -19; z <= 17; z += 2.3) for (const sx of [1, -1]) {
+    const y = -1.45, x = hullHalfAt(z, y) + 0.02;
+    list.push([sx * x, y, z, sx]);
+  }
+  const rim = new THREE.InstancedMesh(new THREE.TorusGeometry(0.16, 0.035, 6, 16), MAT.brass, list.length);
+  const glass = new THREE.InstancedMesh(new THREE.CircleGeometry(0.15, 14), MAT.glass, list.length);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0);
+  list.forEach(([x, y, z, sx], i) => {
+    q.setFromAxisAngle(up, sx * Math.PI / 2);
+    m.compose(new THREE.Vector3(x, y, z), q, s); rim.setMatrixAt(i, m);
+    m.compose(new THREE.Vector3(x + sx * 0.005, y, z), q, s); glass.setMatrixAt(i, m);
+  });
+  group.add(rim, glass);
+}
+
+/* ---------- flags: cloth grid waved on the CPU ---------- */
+class Flag {
+  constructor(parent, pos, w, h, mat, pennant = false) {
+    this.w = w; this.h = h; this.pennant = pennant;
+    this.geo = new THREE.PlaneGeometry(w, h, 14, 6);
+    this.geo.translate(w / 2, -h / 2, 0);
+    this.base = this.geo.attributes.position.array.slice();
+    this.mesh = new THREE.Mesh(this.geo, mat); this.mesh.castShadow = true;
+    this.pivot = new THREE.Group(); this.pivot.position.set(...pos); this.pivot.add(this.mesh); parent.add(this.pivot);
+    this.phase = rnd(0, TAU);
+  }
+  update(t, wind, localWindAngle) {
+    this.pivot.rotation.y = localWindAngle - Math.PI / 2;
+    const p = this.geo.attributes.position, b = this.base;
+    const amp = 0.08 + wind * 0.012, fq = 2 + wind * 0.32, k = 2.6;
+    for (let i = 0; i < p.count; i++) {
+      const x = b[i * 3], y = b[i * 3 + 1], u = x / this.w;
+      let sc = 1;
+      if (this.pennant) sc = 1 - u * 0.9;
+      const z = Math.sin(u * k * TAU * 0.5 - t * fq + this.phase) * amp * this.w * 0.35 * u + Math.sin(u * 9 - t * fq * 1.7) * amp * 0.25 * u;
+      p.setXYZ(i, x, (y + this.h / 2) * sc - this.h / 2 * sc - (1 - Math.min(1, wind / 6)) * u * u * this.h * 0.8, z);
+    }
+    p.needsUpdate = true; this.geo.computeVertexNormals();
+  }
+}
+
+class ShipBuilder {
+  static build() {
+    const ship = { group: new THREE.Group(), deck: new THREE.Group(), doors: {}, yards: {}, flags: [], lamps: [], wheel: null };
+    ship.pinRails = [[4.35, 12.2], [-4.35, 12.2], [4.75, -1.6], [-4.75, -1.6], [3.95, -11.4], [-3.95, -11.4]];
+    ship.equipment = [{ id: 'crateFore', pos: [-3.5, 17.2], dz: 1 }, { id: 'crateMid', pos: [3.9, 9.6], dz: 1 }, { id: 'crateAft', pos: [-3.6, -8.6], dz: -1 }];
+    const g = ship.group;
+    g.add(buildHull());
+    g.add(buildDeck());
+    buildBulwarks(g);
+    buildDeckhouses(g, ship);
+    buildHelm(g, ship);
+    buildDeckGear(g, ship);
+    buildMasts(g, ship);
+    buildPortholes(g);
+    // flags: red ensign at the gaff peak, pennants at the trucks
+    const ens = new THREE.MeshStandardMaterial({ map: ensignTexture(), roughness: 0.8, side: THREE.DoubleSide });
+    ship.flags.push(new Flag(ship.gaff, [0, 3.55, -8.5], 2.6, 1.3, ens));
+    const penMat = [new THREE.MeshStandardMaterial({ color: '#c8302a', side: THREE.DoubleSide, roughness: 0.8 }), new THREE.MeshStandardMaterial({ color: '#f2f2ee', side: THREE.DoubleSide, roughness: 0.8 }), new THREE.MeshStandardMaterial({ color: '#1f3c88', side: THREE.DoubleSide, roughness: 0.8 })];
+    Object.values(MASTS).forEach((m, i) => ship.flags.push(new Flag(g, [0, m.top + 0.2, m.z - 0.95], 3.2, 0.42, penMat[i], true)));
+    // lanterns for night sailing
+    for (const [x, y, z, c] of [[0, 3.95, -24.6, '#fff1c8'], [0, 35.5, 11.55, '#ffffff'], [5.05, 1.6, 6, '#ff3b2b'], [-5.05, 1.6, 6, '#3bff6b']]) {
+      const lm = MAT.lamp.clone(); lm.emissive = new THREE.Color(c);
+      const l = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), lm); l.position.set(x, y, z); g.add(l); ship.lamps.push(l);
+    }
+    ship.deckLight = new THREE.PointLight(0xffd59a, 0, 22, 1.6); ship.deckLight.position.set(0, 4.2, 3); g.add(ship.deckLight);
+    ship.sternLight = new THREE.PointLight(0xffe2b0, 0, 18, 1.6); ship.sternLight.position.set(0, 4.6, -18); g.add(ship.sternLight);
+    g.add(ship.deck);
+    g.traverse((o) => { if (o.isMesh && o.material !== MAT.sail) { if (o.castShadow === undefined) o.castShadow = true; } });
+    scene.add(g);
+    return ship;
+  }
+}
+
+/* ============================================================================
+   6. SAIL SYSTEM — cloth-inspired CPU deformation (billow, flutter, folds)
+   and staged reefing. Each mast has a deployment value that only moves while a
+   sailor is hauling at that mast's sail station.
+   ============================================================================ */
+const SAIL_STAGES = { course: 0.3, lowerTs: 0.05, upperTs: 0.45, tg: 0.65, royal: 0.85 };
+const SQUARE_ORDER = ['course', 'lowerTs', 'upperTs', 'tg', 'royal'];
+
+class SailSystem {
+  constructor(ship) {
+    this.ship = ship;
+    this.sails = [];
+    this.dep = { fore: 1, main: 1, mizzen: 1 };
+    this.target = { fore: 1, main: 1, mizzen: 1 };
+    this.workers = { fore: 0, main: 0, mizzen: 0 };
+    this.t = 0;
+    // square sails hang from each yard to the yard below
+    for (const mast of ['fore', 'main']) {
+      const yards = ship.yards[mast];
+      yards.forEach((y, i) => {
+        const below = yards[i - 1];
+        const footY = below ? below.height - y.height + 0.35 : 4.4 - y.height;
+        const footZ = below ? below.group.position.z - y.group.position.z : 0.6;
+        const footW = below ? below.width * 0.93 : y.width * 1.02;
+        this.addSquare(mast, y, SQUARE_ORDER[i], y.width * 0.93, footW, -footY - 0.15, footZ);
+      });
+    }
+    // fore-and-aft sails on the stays: [mast group, stay, stage threshold, clew height fraction, clew aft]
+    const st = ship.stays;
+    this.addTri('fore', st.foreStay, 0.05, 0.62, 0.0);
+    this.addTri('fore', st.innerJib, 0.4, 0.6, 0.0);
+    this.addTri('fore', st.outerJib, 0.7, 0.6, 0.0);
+    this.addTri('main', st.mainTop, 0.3, 0.75, 0.0);
+    this.addTri('main', st.mainTg, 0.6, 0.75, 0.0);
+    this.addTri('mizzen', st.mizStay, 0.5, 0.8, 0.0);
+    this.spanker = this.addQuad('mizzen', 0.25);
+    this.gaffTop = this.addTriFree('mizzen', 0.7);
+  }
+  makeMesh(U, V, parent) {
+    const g = new THREE.PlaneGeometry(1, 1, U, V);
+    const m = new THREE.Mesh(g, MAT.sail); m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
+    parent.add(m);
+    return m;
+  }
+  addSquare(mast, yard, stage, topW, botW, height, footZ) {
+    const U = 14, V = 10, mesh = this.makeMesh(U, V, yard.group);
+    mesh.position.z = 0.32;
+    this.sails.push({ kind: 'square', mast, yard, stage, thr: SAIL_STAGES[stage], topW, botW, H: -height, footZ, mesh, U, V, seed: rnd(0, 100), d: 1 });
+  }
+  addTri(mast, stay, thr, clewFrac, clewAft) {
+    const U = 10, V = 10, mesh = this.makeMesh(U, V, this.ship.group);
+    const [head, tack] = stay;
+    this.sails.push({ kind: 'tri', mast, thr, head, tack, clewFrac, mesh, U, V, seed: rnd(0, 100), d: 1 });
+  }
+  addTriFree(mast, thr) {
+    const U = 8, V = 8, mesh = this.makeMesh(U, V, this.ship.group);
+    const s = { kind: 'gafftop', mast, thr, mesh, U, V, seed: rnd(0, 100), d: 1 };
+    this.sails.push(s); return s;
+  }
+  addQuad(mast, thr) {
+    const U = 12, V = 10, mesh = this.makeMesh(U, V, this.ship.group);
+    const s = { kind: 'spanker', mast, thr, mesh, U, V, seed: rnd(0, 100), d: 1 };
+    this.sails.push(s); return s;
+  }
+  /** Sail state label from overall deployment. */
+  stateLabel() {
+    const avg = (this.dep.fore + this.dep.main + this.dep.mizzen) / 3;
+    return avg > 0.85 ? 'FULLY_DEPLOYED' : avg > 0.3 ? 'PARTIALLY_REEFED' : 'MOSTLY_FURLED';
+  }
+  needs(mast) { return Math.abs(this.target[mast] - this.dep[mast]) > 0.025; }
+  /** Called by the crew system each frame with the number of sailors hauling at each mast. */
+  work(dt) {
+    for (const m of ['fore', 'main', 'mizzen']) {
+      const n = this.workers[m];
+      if (n > 0) { const rate = 0.075 * Math.min(2, n) * (SIM.crewSpeed); const d = this.target[m] - this.dep[m]; this.dep[m] += clamp(d, -rate * dt, rate * dt); }
+      this.workers[m] = 0;
+    }
+  }
+  power() {
+    const w = { fore: 0.38, main: 0.44, mizzen: 0.18 };
+    let p = 0; for (const m in w) p += w[m] * Math.pow(this.dep[m], 0.8);
+    return p;
+  }
+  update(dt, windLocal, wind) {
+    this.t += dt;
+    const t = this.t, strength = 0.35 + 0.65 * clamp(wind / 14, 0, 1.4);
+    const flutterAmp = 0.03 + clamp(wind / 30, 0, 1.2) * 0.22;
+    const fq = 3 + wind * 0.25;
+    // brace the yards toward the wind and swing the spanker to leeward
+    const rel = Math.atan2(windLocal.x, windLocal.z);
+    const brace = clamp(-rel * 0.55, -0.62, 0.62);
+    for (const mast of ['fore', 'main']) for (const y of this.ship.yards[mast]) y.group.rotation.y += (brace - y.group.rotation.y) * Math.min(1, dt * 0.6);
+    const lee = Math.sign(windLocal.x || 1e-3);
+    const swing = -lee * clamp(0.18 + Math.abs(windLocal.x) * 0.45, 0, 0.6);
+    this.ship.boom.rotation.y += (swing - this.ship.boom.rotation.y) * Math.min(1, dt * 0.5);
+    this.ship.gaff.rotation.y = this.ship.boom.rotation.y * 0.85;
+    for (const s of this.sails) {
+      s.d = clamp((this.dep[s.mast] - s.thr) / 0.18, 0, 1);
+      const p = s.mesh.geometry.attributes.position;
+      if (s.kind === 'square') {
+        const n = new THREE.Vector3(Math.sin(s.yard.group.rotation.y), 0, Math.cos(s.yard.group.rotation.y));
+        let press = windLocal.x * n.x + windLocal.z * n.z;
+        const sign = press >= 0 ? 1 : -1; press = Math.max(Math.abs(press), 0.3) * sign;
+        const depth = 0.11 * s.H * strength * press;
+        const d = s.d, vScale = 0.05 + 0.95 * d;
+        let k = 0;
+        for (let j = 0; j <= s.V; j++) {
+          const v = j / s.V, vE = v * vScale;
+          const width = lerp(s.topW, s.botW, vE);
+          for (let i = 0; i <= s.U; i++, k++) {
+            const u = i / s.U, cu = 1 - Math.pow(2 * u - 1, 2);
+            const bel = Math.pow(cu, 0.8) * (Math.sin(Math.PI * Math.min(1, vE * 1.05)) * 0.85 + vE * 0.3);
+            const flut = Math.sin(t * fq + u * 7 + v * 5 + s.seed) * flutterAmp * (0.25 + 0.75 * v) * cu * d;
+            const fold = (1 - d) * 0.16 * Math.sin(u * 38 + s.seed) * Math.min(1, v * 3);
+            p.setXYZ(k, (u - 0.5) * width, -vE * s.H - (1 - d) * 0.1 * Math.sin(u * 19), depth * bel * (0.15 + 0.85 * d) + flut + fold + s.footZ * vE);
+          }
+        }
+      } else {
+        // corners in ship-local space
+        let head, tack, clew, throat = null;
+        if (s.kind === 'tri') {
+          head = new THREE.Vector3(...s.head); tack = new THREE.Vector3(...s.tack);
+          const lowY = Math.min(head.y, tack.y), mid = head.clone().lerp(tack, 0.62);
+          clew = new THREE.Vector3(lee * 1.6, lerp(lowY, head.y, 0.18) + 1.2, mid.z - 3.0 - Math.abs(head.z - tack.z) * 0.12);
+          if (clew.z < tack.z - Math.abs(head.z - tack.z)) clew.z = tack.z - 3;
+        } else if (s.kind === 'spanker') {
+          const gr = this.ship.gaff.rotation.y, br = this.ship.boom.rotation.y;
+          throat = new THREE.Vector3(0, 13.5, -12.4);
+          head = new THREE.Vector3(-8.4 * Math.sin(gr), 13.6 + 3.5, -12.35 - 8.4 * Math.cos(gr));
+          clew = new THREE.Vector3(-11.0 * Math.sin(br), 3.2 + 0.4, -12.35 - 11.0 * Math.cos(br));
+          tack = new THREE.Vector3(0, 3.7, -12.4);
+        } else {
+          const gr = this.ship.gaff.rotation.y;
+          head = new THREE.Vector3(0, 24.5, -12.85);
+          tack = new THREE.Vector3(0, 14.2, -12.45);
+          clew = new THREE.Vector3(-8.2 * Math.sin(gr), 13.6 + 3.7, -12.35 - 8.2 * Math.cos(gr));
+        }
+        const d = s.d;
+        // furl toward the luff (the stay or the mast)
+        const luffA = throat || head, luffB = tack;
+        const e1 = luffB.clone().sub(luffA), e2 = clew.clone().sub(luffA);
+        const normal = new THREE.Vector3().crossVectors(e1, e2).normalize();
+        if (normal.x * lee < 0) normal.negate();
+        const depth = (0.06 + 0.06 * Math.abs(windLocal.x)) * e1.length() * strength * (0.2 + 0.8 * d);
+        let k = 0;
+        for (let j = 0; j <= s.V; j++) {
+          const v = j / s.V;
+          for (let i = 0; i <= s.U; i++, k++) {
+            const u = i / s.U;
+            let P;
+            if (s.kind === 'spanker') {
+              const top = throat.clone().lerp(head, u), bot = tack.clone().lerp(clew, u);
+              P = top.lerp(bot, v);
+              const luffPt = throat.clone().lerp(tack, v);
+              P.lerp(luffPt, (1 - d) * 0.9);
+            } else {
+              // triangle: v from head (0) to foot (1); u across from luff to leech
+              const onLuff = head.clone().lerp(tack, v), onLeech = head.clone().lerp(clew, v);
+              P = onLuff.clone().lerp(onLeech, u * (0.08 + 0.92 * d));
+            }
+            const bub = Math.sin(Math.PI * u) * Math.sin(Math.PI * Math.min(1, v * 1.1)) * (s.kind === 'spanker' ? 1 : 0.9);
+            const flut = Math.sin(t * fq * 1.2 + u * 8 + v * 4 + s.seed) * flutterAmp * u * v * 0.8 * d;
+            const fold = (1 - d) * 0.12 * Math.sin(v * 30 + s.seed);
+            P.addScaledVector(normal, depth * bub + flut + fold);
+            p.setXYZ(k, P.x, P.y, P.z);
+          }
+        }
+      }
+      p.needsUpdate = true;
+      s.mesh.geometry.computeVertexNormals();
+      s.mesh.geometry.computeBoundingSphere();
+      s.mesh.visible = s.d > 0.002 || s.kind === 'square';
+    }
+  }
+}
+
+/* ============================================================================
+   7. SHIP PHYSICS — buoyancy from nine hull sample points on the same wave
+   function the ocean renders; spring-damper heave/pitch/roll, inertia,
+   wind heel, heading control and forward motion.
+   ============================================================================ */
+class ShipPhysics {
+  constructor(ship, ocean) {
+    this.ship = ship; this.ocean = ocean;
+    this.samples = [[0, 0], [0, 21], [0, -21], [4.6, 0], [-4.6, 0], [3.4, 12], [-3.4, 12], [3.6, -13], [-3.6, -13]];
+    this.reset();
+  }
+  reset() {
+    this.x = 0; this.z = 0; this.yaw = 45 * DEG; this.speed = 2.2;
+    this.y = 3; this.vy = 0; this.pitch = 0; this.vp = 0; this.roll = 0; this.vr = 0;
+    this.severity = 0; this.impact = 0; this.impactCount = 0; this.lastVr = 0; this.lastVp = 0;
+    this.h = new Array(this.samples.length).fill(0);
+  }
+  update(dt, P) {
+    const { headingTarget, maxSpeed, windLocal, wind, intensity, sailPower } = P;
+    // heading: a slow helm-limited turn plus a little wave-induced yaw
+    const turn = clamp(angDiff(headingTarget, this.yaw) * 0.1, -0.05, 0.05) * clamp(this.speed / 2.5 + 0.3, 0.3, 1.2);
+    this.yaw += (turn + Math.sin(this.ocean.time * 0.37) * this.roll * 0.012 * intensity) * dt;
+    // forward drive from the sails and the wind angle
+    const a = Math.acos(clamp(windLocal.z, -1, 1));
+    const windFactor = a < 1.9 ? lerp(0.85, 1.0, Math.sin(a * 0.82)) : lerp(1.0, 0.05, smooth((a - 1.9) / (Math.PI - 1.9)));
+    const target = maxSpeed * 0.5144 * sailPower * windFactor * clamp(wind / 14, 0.12, 1.25);
+    this.speed += (target - this.speed) * dt * 0.09;
+    const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
+    this.x += fx * this.speed * dt + windLocal.worldX * wind * 0.004 * dt;
+    this.z += fz * this.speed * dt + windLocal.worldZ * wind * 0.004 * dt;
+    // sample the sea along the hull
+    const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
+    let sum = 0;
+    this.samples.forEach(([sx, sz], i) => {
+      const wx = this.x + rx * sx + fx * sz, wz = this.z + rz * sx + fz * sz;
+      this.h[i] = this.ocean.heightAt(wx, wz); sum += this.h[i];
+    });
+    const h = this.h, mean = sum / h.length;
+    const heel = -windLocal.x * Math.min(0.15, Math.pow(wind / 30, 2) * 0.22 * sailPower + 0.004 * wind) * intensity;
+    const tPitch = clamp(Math.atan2(((h[1] + h[5] + h[6]) / 3) - ((h[2] + h[7] + h[8]) / 3), 34) * intensity, -0.32, 0.32);
+    const tRoll = clamp(Math.atan2(((h[3] + h[5] + h[7]) / 3) - ((h[4] + h[6] + h[8]) / 3), 8.4) * intensity * 1.15 + heel, -0.45, 0.45);
+    // weight the water amidships so a crest under the waist lifts the ship instead of drowning the deck
+    const tY = Math.max(mean * 0.6 + h[0] * 0.4, h[0] - 1.1) - CONFIG.ship.waterline;
+    const kInt = 0.7 + 0.3 * Math.min(intensity, 1.5);
+    this.vy += ((tY - this.y) * 2.6 * kInt - this.vy * 2.1) * dt; this.y += this.vy * dt;
+    this.vp += ((tPitch - this.pitch) * 3.2 * kInt - this.vp * 2.3) * dt; this.pitch += this.vp * dt;
+    this.vr += ((tRoll - this.roll) * 1.5 * kInt - this.vr * 0.95) * dt; this.roll += this.vr * dt;
+    this.pitch = clamp(this.pitch, -0.34, 0.34); this.roll = clamp(this.roll, -0.48, 0.48);
+    // never let the hull drift unnaturally far from the surface
+    this.y = clamp(this.y, Math.max(tY - 1.5, h[0] + 1.5), tY + 1.5);
+    // motion severity drives crew reactions; sudden accelerations are "impacts"
+    const ar = Math.abs(this.vr - this.lastVr) / Math.max(dt, 1e-3), ap = Math.abs(this.vp - this.lastVp) / Math.max(dt, 1e-3);
+    this.lastVr = this.vr; this.lastVp = this.vp;
+    const sev = Math.abs(this.roll) / 0.22 + Math.abs(this.pitch) / 0.16 + Math.abs(this.vr) * 1.4 + Math.abs(this.vp) * 1.6;
+    this.severity += (sev - this.severity) * Math.min(1, dt * 2);
+    const jolt = ar * 0.5 + ap * 0.7;
+    this.impact = Math.max(this.impact - dt * 1.5, 0);
+    if (jolt > 0.25 && this.severity > 0.6 && this.impact < 0.2) { this.impact = clamp(jolt, 0.3, 1.2); this.impactCount++; }
+    const g = this.ship.group;
+    g.position.set(this.x, this.y, this.z);
+    g.rotation.order = 'YXZ';
+    g.rotation.set(-this.pitch, this.yaw, this.roll);
+  }
+  /** Bow height above the sea (negative when the bow buries into a wave). */
+  bowClearance() { return (this.y + 2.2 + Math.sin(this.pitch) * 22) - this.h[1]; }
+}
+
+/* ============================================================================
+   8. DECK NAVIGATION — waypoint graph in ship-local space. Every edge was laid
+   out to clear masts, deckhouses, the hatch, helm, capstan and lashed gear.
+   ============================================================================ */
+const NAV = {
+  nodes: {
+    f0: [0, 22.4], f1: [-1.8, 21.4], f2: [1.8, 21.4], f3: [-2.4, 18.6], f4: [2.4, 18.6], f5: [-2.2, 15.4], f6: [2.2, 15.4],
+    m1: [-1.9, 12.7], m2: [1.9, 12.7], h1: [-2.4, 10.6], h2: [2.3, 10.6], h3: [-3.4, 5.4], h4: [3.4, 5.4], d0: [0, 5.3],
+    s1: [-3.85, 3.0], s2: [3.85, 3.0], s3: [-3.85, -2.4], s4: [3.85, -2.4], s5: [-3.85, -7.2], s6: [3.85, -7.2],
+    a1: [-2.4, -7.9], a2: [2.4, -7.9], z1: [-2.2, -11.6], z2: [2.2, -11.6], k1: [-2.0, -14.0], k2: [2.0, -14.0],
+    k3: [-1.0, -15.7], k4: [1.0, -15.7], e0: [0, -16.25],
+  },
+  edges: 'f0-f1 f0-f2 f1-f3 f2-f4 f3-f5 f4-f6 f5-f6 f5-m1 f6-m2 m1-h1 m2-h2 h1-h2 h1-h3 h2-h4 h3-d0 h4-d0 h3-s1 h4-s2 s1-s3 s2-s4 s3-s5 s4-s6 s5-a1 s6-a2 a1-a2 a1-z1 a2-z2 z1-k1 z2-k2 k1-k3 k2-k4 k3-k4 k3-e0 k4-e0',
+  adj: {},
+};
+NAV.edges.split(' ').forEach((e) => { const [a, b] = e.split('-'); (NAV.adj[a] ||= []).push(b); (NAV.adj[b] ||= []).push(a); });
+const FACE = { port: Math.PI / 2, stbd: -Math.PI / 2, fwd: 0, aft: Math.PI };
+const STATIONS = {
+  ropeFore:   { pos: [-3.7, 12.2], node: 'm1', face: FACE.stbd, mast: 'fore', aloft: [-1.3, 12.1, 12.2], pin: [-4.55, 0.9, 12.2] },
+  sailFore:   { pos: [3.7, 12.6],  node: 'm2', face: FACE.port, mast: 'fore', aloft: [9.0, 11.4, 13.0], pin: [4.55, 0.9, 12.6] },
+  ropeMain:   { pos: [-4.1, -2.0], node: 's3', face: FACE.stbd, mast: 'main', aloft: [-1.3, 13.3, -1.3], pin: [-4.95, 0.9, -2.0] },
+  sailMain:   { pos: [4.1, -1.4],  node: 's4', face: FACE.port, mast: 'main', aloft: [10.0, 12.6, -0.6], pin: [4.95, 0.9, -1.4] },
+  sailMizzen: { pos: [3.45, -11.4], node: 'z2', face: FACE.port, mast: 'mizzen', aloft: [1.2, 13.6, -12.4], pin: [4.15, 0.9, -11.4] },
+  ropeMizzen: { pos: [-3.45, -11.4], node: 'z1', face: FACE.stbd, mast: 'mizzen', aloft: [-1.2, 13.6, -12.4], pin: [-4.15, 0.9, -11.4] },
+  helm:       { pos: [0, -15.25],  node: 'k4', face: FACE.fwd },
+  captain:    { pos: [1.75, -15.3], node: 'k4', face: FACE.fwd },
+  lookout:    { pos: [0, 22.7],    node: 'f0', face: FACE.fwd },
+  crateFore:  { pos: [-2.7, 17.2], node: 'f3', face: FACE.stbd, eq: 'crateFore' },
+  crateMid:   { pos: [2.85, 9.6],  node: 'h2', face: FACE.port, eq: 'crateMid' },
+  crateAft:   { pos: [-2.75, -8.6], node: 'a1', face: FACE.stbd, eq: 'crateAft' },
+  railFP:     { pos: [3.95, 15.6], node: 'f6', face: FACE.port },
+  railFS:     { pos: [-3.95, 15.6], node: 'f5', face: FACE.stbd },
+  railMP:     { pos: [4.45, 1.0],  node: 's2', face: FACE.port },
+  railMS:     { pos: [-4.45, 0.6], node: 's1', face: FACE.stbd },
+  railAP:     { pos: [4.4, -6.4],  node: 's6', face: FACE.port },
+  railAS:     { pos: [-4.4, -6.0], node: 's5', face: FACE.stbd },
+  railZP:     { pos: [4.0, -13.6], node: 'k2', face: FACE.port },
+  talkA:      { pos: [0.9, 16.5],  node: 'f6', face: 0.9 },
+  talkB:      { pos: [2.2, 17.4],  node: 'f6', face: 0.9 + Math.PI },
+  bowRail:    { pos: [2.5, 20.6],  node: 'f2', face: 0.6 },
+  midDoor:    { pos: [0, 5.25], node: 'd0', face: FACE.aft, inside: [0, 3.0], door: 'mid' },
+  aftDoor:    { pos: [0, -16.25], node: 'e0', face: FACE.aft, inside: [0, -18.5], door: 'aft' },
+};
+const PATROL = ['f1', 'f2', 'f5', 'f6', 'm1', 'm2', 'h1', 'h2', 's1', 's2', 's3', 's4', 's5', 's6', 'a1', 'a2', 'z1', 'z2', 'bowRail', 'railMP', 'railMS'];
+
+function nearestNode(x, z) { let best = null, bd = Infinity; for (const [id, [nx, nz]] of Object.entries(NAV.nodes)) { const d = Math.hypot(nx - x, nz - z); if (d < bd) { bd = d; best = id; } } return best; }
+function findPath(fromId, toId) {
+  const dist = { [fromId]: 0 }, prev = {}, open = new Set([fromId]);
+  while (open.size) {
+    let cur = null, cd = Infinity; for (const n of open) if (dist[n] < cd) { cd = dist[n]; cur = n; }
+    open.delete(cur);
+    if (cur === toId) break;
+    for (const nb of NAV.adj[cur] || []) {
+      const [ax, az] = NAV.nodes[cur], [bx, bz] = NAV.nodes[nb];
+      const nd = cd + Math.hypot(bx - ax, bz - az);
+      if (nd < (dist[nb] ?? Infinity)) { dist[nb] = nd; prev[nb] = cur; open.add(nb); }
+    }
+  }
+  const path = []; let c = toId;
+  if (c !== fromId && prev[c] === undefined) return [NAV.nodes[toId]];
+  while (c !== undefined) { path.unshift(NAV.nodes[c]); c = prev[c]; }
+  return path;
+}
+/** Route from a deck position to a station or node id, as a list of [x, z] points. */
+function routeTo(x, z, target) {
+  const st = STATIONS[target];
+  const endNode = st ? st.node : target;
+  const endPt = st ? st.pos : NAV.nodes[target];
+  const startNode = nearestNode(x, z);
+  const pts = findPath(startNode, endNode).slice();
+  // skip the first node if we are already past it toward the second
+  if (pts.length > 1) { const [ax, az] = pts[0], [bx, bz] = pts[1]; if (Math.hypot(bx - x, bz - z) < Math.hypot(bx - ax, bz - az)) pts.shift(); }
+  pts.push(endPt);
+  return pts;
+}
+
+/* ============================================================================
+   9. CREW MEMBER — articulated procedural sailor with pose blending
+   ============================================================================ */
+const STATE = {
+  IDLE: 'IDLE', WALKING: 'WALKING', PATROLLING: 'PATROLLING', WORKING: 'WORKING', INSPECTING: 'INSPECTING', HOLDING_ROPE: 'HOLDING_ROPE',
+  ADJUSTING_SAIL: 'ADJUSTING_SAIL', BRACING: 'BRACING', HOLDING_RAIL: 'HOLDING_RAIL', RUNNING: 'RUNNING', SEEKING_SHELTER: 'SEEKING_SHELTER',
+  ENTERING_CABIN: 'ENTERING_CABIN', INSIDE_CABIN: 'INSIDE_CABIN', RETURNING_TO_DECK: 'RETURNING_TO_DECK', COMMANDING: 'COMMANDING', AT_HELM: 'AT_HELM', TALKING: 'TALKING',
+};
+const GEO = {
+  torso: new THREE.CapsuleGeometry(0.16, 0.32, 4, 10), head: new THREE.SphereGeometry(0.105, 14, 10), upper: new THREE.CapsuleGeometry(0.048, 0.22, 3, 8),
+  fore: new THREE.CapsuleGeometry(0.042, 0.2, 3, 8), hand: new THREE.SphereGeometry(0.045, 8, 6), thigh: new THREE.CapsuleGeometry(0.068, 0.32, 3, 8),
+  shin: new THREE.CapsuleGeometry(0.058, 0.32, 3, 8), boot: new THREE.BoxGeometry(0.11, 0.08, 0.24), beanie: new THREE.SphereGeometry(0.112, 12, 8, 0, TAU, 0, Math.PI * 0.55),
+  capTop: new THREE.CylinderGeometry(0.13, 0.115, 0.07, 16), visor: new THREE.CylinderGeometry(0.1, 0.1, 0.012, 16, 1, false, -Math.PI / 2, Math.PI), sou: new THREE.ConeGeometry(0.17, 0.12, 14),
+  button: new THREE.SphereGeometry(0.014, 6, 4), epaulette: new THREE.BoxGeometry(0.09, 0.02, 0.06), box: new THREE.BoxGeometry(0.34, 0.24, 0.26), ring: new THREE.RingGeometry(0.38, 0.47, 32),
+};
+const SKIN = ['#d6a47c', '#b98058', '#e4b894', '#8a5a3c', '#c79066'];
+const OILSKIN = new THREE.Color('#e3b52a');
+
+class CrewMember {
+  constructor(def, i, parent) {
+    this.def = def; this.id = i; this.role = def.role; this.name = def.name; this.title = def.title;
+    this.x = def.start[0]; this.z = def.start[1]; this.facing = def.face ?? 0;
+    this.state = STATE.IDLE; this.plan = []; this.step = null; this.interrupt = null; this.label = 'Standing by';
+    this.phase = rnd(0, TAU); this.t = rnd(0, 10); this.hidden = false; this.waitT = 0;
+    this.pose = this.blankPose(); this.target = this.blankPose();
+    this.baseTop = col(def.top); this.mats = {
+      top: new THREE.MeshStandardMaterial({ color: def.top, roughness: 0.85 }), pants: new THREE.MeshStandardMaterial({ color: def.pants, roughness: 0.85 }),
+      skin: new THREE.MeshStandardMaterial({ color: SKIN[i % SKIN.length], roughness: 0.7 }), hat: new THREE.MeshStandardMaterial({ color: def.hat, roughness: 0.8 }),
+      boot: new THREE.MeshStandardMaterial({ color: '#16171b', roughness: 0.6 }),
+    };
+    this.baseHat = col(def.hat);
+    this.build(parent);
+  }
+  blankPose() { return { crouch: 0, lean: 0, side: 0, twist: 0, headP: 0, headY: 0, lSh: 0, lShR: 0.06, lEl: 0.15, rSh: 0, rShR: 0.06, rEl: 0.15, lHip: 0, lHipR: 0, lKn: 0.05, rHip: 0, rHipR: 0, rKn: 0.05 }; }
+  build(parent) {
+    const M = this.mats, mesh = (g, m, p, r) => { const o = new THREE.Mesh(g, m); if (p) o.position.set(...p); if (r) o.rotation.set(...r); o.castShadow = true; o.userData.crew = this; return o; };
+    const root = this.root = new THREE.Group(); parent.add(root);
+    const hips = this.hips = new THREE.Group(); hips.position.y = 0.95; root.add(hips);
+    const spine = this.spine = new THREE.Group(); hips.add(spine);
+    const torso = mesh(GEO.torso, M.top, [0, 0.3, 0]); torso.scale.set(1.12, 1, 0.74); spine.add(torso);
+    const neck = this.neck = new THREE.Group(); neck.position.y = 0.6; spine.add(neck);
+    neck.add(mesh(GEO.head, M.skin, [0, 0.1, 0]));
+    const nose = mesh(new THREE.SphereGeometry(0.022, 6, 4), M.skin, [0, 0.09, 0.1]); neck.add(nose);
+    const hatG = new THREE.Group(); hatG.position.y = 0.1; neck.add(hatG); this.hatG = hatG;
+    if (this.def.hatType === 'cap') {
+      hatG.add(mesh(GEO.capTop, M.hat, [0, 0.085, 0]));
+      const band = mesh(new THREE.CylinderGeometry(0.112, 0.112, 0.04, 16), new THREE.MeshStandardMaterial({ color: '#141c2c' }), [0, 0.04, 0]); hatG.add(band);
+      const vis = mesh(GEO.visor, new THREE.MeshStandardMaterial({ color: '#0b0f18', roughness: 0.3 }), [0, 0.025, 0.07]); vis.rotation.x = 0.25; hatG.add(vis);
+      const badge = mesh(new THREE.SphereGeometry(0.016, 8, 6), MAT.brass, [0, 0.05, 0.11]); hatG.add(badge);
+    } else {
+      const b = mesh(GEO.beanie, M.hat, [0, 0.0, 0]); hatG.add(b);
+      this.sou = mesh(GEO.sou, M.hat, [0, 0.07, -0.01]); this.sou.visible = false; hatG.add(this.sou);
+    }
+    const arm = (side) => {
+      const sh = new THREE.Group(); sh.position.set(side * 0.2, 0.5, 0); spine.add(sh);
+      sh.add(mesh(GEO.upper, M.top, [0, -0.14, 0]));
+      const el = new THREE.Group(); el.position.y = -0.29; sh.add(el);
+      el.add(mesh(GEO.fore, this.def.role === 'captain' ? M.top : M.skin, [0, -0.13, 0]));
+      const hand = mesh(GEO.hand, M.skin, [0, -0.28, 0]); el.add(hand);
+      return { sh, el, hand };
+    };
+    this.lArm = arm(1); this.rArm = arm(-1);
+    const leg = (side) => {
+      const hp = new THREE.Group(); hp.position.set(side * 0.095, 0, 0); hips.add(hp);
+      hp.add(mesh(GEO.thigh, M.pants, [0, -0.23, 0]));
+      const kn = new THREE.Group(); kn.position.y = -0.46; hp.add(kn);
+      kn.add(mesh(GEO.shin, M.pants, [0, -0.22, 0]));
+      kn.add(mesh(GEO.boot, M.boot, [0, -0.46, 0.04]));
+      return { hp, kn };
+    };
+    this.lLeg = leg(1); this.rLeg = leg(-1);
+    if (this.def.role === 'captain') {
+      for (let k = 0; k < 3; k++) for (const sx of [1, -1]) spine.add(mesh(GEO.button, MAT.brass, [sx * 0.06, 0.18 + k * 0.1, 0.125]));
+      for (const sx of [1, -1]) spine.add(mesh(GEO.epaulette, MAT.brass, [sx * 0.2, 0.56, 0]));
+      const collar = mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.06, 12), new THREE.MeshStandardMaterial({ color: '#f2f2ee' }), [0, 0.57, 0.01]); spine.add(collar);
+    }
+    if (this.def.role === 'lookout') { const bino = mesh(new THREE.BoxGeometry(0.12, 0.06, 0.1), MAT.dark, [0, 0.33, 0.14]); spine.add(bino); }
+    this.box = mesh(GEO.box, MAT.crate, [0, -0.3, 0.12]); this.box.visible = false; this.rArm.el.add(this.box);
+    this.ring = new THREE.Mesh(GEO.ring, new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false }));
+    this.ring.rotation.x = -Math.PI / 2; this.ring.position.y = 0.04; this.ring.visible = false; root.add(this.ring);
+    // rope in the hands when hauling or holding a line
+    this.rope = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1, 5), MAT.ropeLight); this.rope.visible = false; this.rope.castShadow = true;
+    this.rope2 = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1, 5), MAT.ropeLight); this.rope2.visible = false;
+    parent.add(this.rope, this.rope2);
+    this.label = 'Standing by';
+  }
+  setPlan(steps) { this.plan = steps; this.step = null; this.nextStep(); }
+  nextStep() {
+    this.step = this.plan.shift() || null;
+    if (!this.step) return;
+    const s = this.step; s.t = 0;
+    if (s.type === 'go' || s.type === 'enter' || s.type === 'exit') {
+      if (s.type === 'go') s.path = routeTo(this.x, this.z, s.to);
+      if (s.type === 'enter') { const st = STATIONS[s.door]; s.path = [...routeTo(this.x, this.z, s.door), st.inside]; s.doorObj = SHIP.doors[st.door]; }
+      if (s.type === 'exit') { const st = STATIONS[s.door]; this.x = st.inside[0]; this.z = st.inside[1]; s.path = [st.pos]; s.doorObj = SHIP.doors[st.door]; s.delay = s.delay ?? 0; }
+      s.wp = 0;
+    }
+    this.state = s.state || this.state; this.label = s.label || this.label;
+  }
+  near(pt, r = 0.25) { return Math.hypot(pt[0] - this.x, pt[1] - this.z) < r; }
+  update(dt, ctx) {
+    this.t += dt;
+    const s = this.step;
+    let moving = false, speed = 0;
+    // interruptions: real ship jolts make walkers stumble, brace or grab the rail
+    if (this.interrupt) {
+      this.interrupt.t -= dt;
+      if (this.interrupt.t <= 0) this.interrupt = null;
+    } else if (ctx.impact && !this.hidden && this.canBeJolted() && rng() < ctx.impact * (0.35 + ctx.alert * 0.12)) {
+      const nearRail = Math.abs(this.x) > deckHalf(this.z) - 1.4;
+      this.interrupt = { kind: nearRail ? 'rail' : 'brace', t: rnd(0.9, 1.8) + ctx.severity * 0.4, state: nearRail ? STATE.HOLDING_RAIL : STATE.BRACING };
+      if (nearRail) this.interruptFace = this.x > 0 ? FACE.port : FACE.stbd;
+    }
+    if (s && !this.interrupt) {
+      s.t += dt;
+      if (s.type === 'go' || s.type === 'enter' || s.type === 'exit') {
+        if (s.type === 'exit' && s.t < s.delay) { this.hidden = true; }
+        else {
+          if (s.type === 'exit') { this.hidden = false; s.doorObj.target = 1; }
+          const pt = s.path[s.wp];
+          const run = s.run;
+          speed = (run ? 3.0 : 1.25) * ctx.speedMul * (1 - Math.min(0.5, ctx.severity * 0.12));
+          const dx = pt[0] - this.x, dz = pt[1] - this.z, d = Math.hypot(dx, dz);
+          // give way to a crewmate standing right in front
+          for (const o of ctx.crew) if (o !== this && !o.hidden) { const ox = o.x - this.x, oz = o.z - this.z, od = Math.hypot(ox, oz); if (od < 0.55 && (ox * dx + oz * dz) / (od * d + 1e-6) > 0.5) { speed *= 0.25; } }
+          if (s.type === 'enter' && s.wp === s.path.length - 2 && d < 1.6) s.doorObj.target = 1;
+          if (d < 0.08) {
+            s.wp++;
+            if (s.wp >= s.path.length) {
+              if (s.type === 'enter') { this.hidden = true; this.state = STATE.INSIDE_CABIN; s.doorObj.target = 0; }
+              if (s.type === 'exit') s.doorObj.target = 0;
+              this.nextStep();
+            }
+          } else {
+            const st = Math.min(d, speed * dt);
+            this.x += dx / d * st; this.z += dz / d * st;
+            this.turnTo(Math.atan2(dx, dz), dt, run ? 8 : 5);
+            moving = true;
+            if (s.type === 'enter' && s.wp === s.path.length - 1) this.state = STATE.ENTERING_CABIN;
+          }
+        }
+      } else if (s.type === 'do') {
+        if (s.face !== undefined) this.turnTo(s.face, dt, 4);
+        if (s.onTick) s.onTick(dt, this);
+        const done = s.until ? s.until(this) : s.t >= s.dur;
+        if (done || (s.maxT && s.t > s.maxT)) { if (s.onDone) s.onDone(this); this.nextStep(); }
+      } else if (s.type === 'inside') {
+        this.hidden = true; this.state = STATE.INSIDE_CABIN;
+        if (s.until(this)) this.nextStep();
+      }
+    }
+    if (!this.step && !this.interrupt) ctx.replan(this);
+    this.animate(dt, ctx, moving, speed);
+  }
+  canBeJolted() {
+    const st = this.state;
+    return [STATE.WALKING, STATE.PATROLLING, STATE.IDLE, STATE.INSPECTING, STATE.RUNNING, STATE.WORKING, STATE.TALKING, STATE.RETURNING_TO_DECK, STATE.SEEKING_SHELTER].includes(st) && this.role !== 'helmsman';
+  }
+  turnTo(a, dt, rate) { this.facing += angDiff(a, this.facing) * Math.min(1, dt * rate); }
+  displayState() { return this.interrupt ? this.interrupt.state : this.state; }
+  activity() {
+    if (this.interrupt) return this.interrupt.kind === 'rail' ? 'Grabbing the railing as the ship lurches' : 'Bracing against the roll';
+    if (this.hidden) return 'Sheltering inside the deckhouse';
+    return this.label;
+  }
+
+  /* ---------- procedural animation ---------- */
+  animate(dt, ctx, moving, speed) {
+    const T = this.target, b = this.blankPose(); Object.assign(T, b);
+    const t = this.t, s = this.step, anim = this.interrupt ? this.interrupt.kind : (moving ? (speed > 2 ? 'run' : 'walk') : s?.anim || 'idle');
+    const roll = ctx.roll, pitch = ctx.pitch, storm = ctx.alert >= 3;
+    if (moving) {
+      this.phase += dt * speed * (speed > 2 ? 2.9 : 3.6);
+      const p = this.phase, run = speed > 2, A = run ? 0.75 : 0.42;
+      T.lHip = A * Math.sin(p); T.rHip = -A * Math.sin(p);
+      T.lKn = 0.12 + (run ? 1.1 : 0.6) * Math.max(0, Math.sin(p - 1.2)); T.rKn = 0.12 + (run ? 1.1 : 0.6) * Math.max(0, Math.sin(p + Math.PI - 1.2));
+      T.lSh = -A * 0.85 * Math.sin(p); T.rSh = A * 0.85 * Math.sin(p);
+      T.lEl = run ? 1.25 : 0.3; T.rEl = run ? 1.25 : 0.3;
+      T.lean = run ? 0.22 : 0.04; T.crouch = -0.02 * Math.abs(Math.cos(p)) + (run ? 0.04 : 0);
+      if (this.box.visible) { T.rSh = 0.55; T.rEl = 1.4; T.lSh = 0.55; T.lEl = 1.4; }
+    } else {
+      switch (anim) {
+        case 'brace': T.lHipR = 0.22; T.rHipR = -0.22; T.lKn = 0.55; T.rKn = 0.55; T.lHip = 0.25; T.rHip = 0.25; T.crouch = 0.16; T.lShR = 0.55; T.rShR = 0.55; T.lEl = 0.5; T.rEl = 0.5; T.lean = 0.15; break;
+        case 'rail': T.crouch = 0.14; T.lKn = 0.5; T.rKn = 0.4; T.lHip = 0.3; T.rHip = 0.22; T.lSh = 1.15; T.rSh = 1.15; T.lEl = 0.35; T.rEl = 0.35; T.lShR = 0.12; T.rShR = 0.12; T.lean = 0.28; T.headP = -0.1; break;
+        case 'rope': {
+          const k = Math.sin(t * 1.4) * 0.5 + 0.5;
+          T.lean = -0.3 - k * 0.12; T.crouch = 0.12; T.lHip = 0.45; T.rHip = -0.1; T.lKn = 0.45; T.rKn = 0.25;
+          T.lSh = 1.25 - k * 0.15; T.rSh = 1.05 - k * 0.1; T.lEl = 0.35; T.rEl = 0.55; T.headP = -0.25; break;
+        }
+        case 'haul': {
+          const k = Math.sin(t * 3.0);
+          T.lean = -0.18 + Math.max(0, -k) * -0.14; T.crouch = 0.1 + Math.max(0, -k) * 0.08; T.lHip = 0.35; T.rHip = -0.12; T.lKn = 0.35; T.rKn = 0.2;
+          T.lSh = 2.2 + k * 0.6; T.rSh = 2.2 - k * 0.6; T.lEl = 0.3 + Math.max(0, -k) * 0.8; T.rEl = 0.3 + Math.max(0, k) * 0.8; T.headP = -0.55; break;
+        }
+        case 'secure': {
+          const k = Math.sin(t * 4.0);
+          T.crouch = 0.42; T.lHip = 1.2; T.rHip = 0.6; T.lKn = 1.7; T.rKn = 1.1; T.lean = 0.65; T.lSh = 0.9 + k * 0.2; T.rSh = 0.9 - k * 0.2; T.lEl = 0.5; T.rEl = 0.5; T.headP = 0.4; break;
+        }
+        case 'scrub': {
+          const k = Math.sin(t * 3.2);
+          T.crouch = 0.5; T.lHip = 1.4; T.rHip = 0.4; T.lKn = 1.9; T.rKn = 1.6; T.lean = 0.75; T.rSh = 0.9 + k * 0.35; T.rEl = 0.4; T.lSh = 0.6; T.lEl = 0.6; T.lShR = 0.2; T.headP = 0.5; break;
+        }
+        case 'coil': { const k = t * 4; T.lSh = 0.75 + Math.sin(k) * 0.25; T.rSh = 0.75 + Math.cos(k) * 0.25; T.lEl = 1.1; T.rEl = 1.1; T.headP = 0.35; T.lean = 0.12; break; }
+        case 'inspect': T.headP = -0.55; T.headY = Math.sin(t * 0.5) * 0.35; T.rSh = Math.sin(t * 0.4) > 0.3 ? 2.2 : 0.1; T.rEl = Math.sin(t * 0.4) > 0.3 ? 0.6 : 0.15; T.lean = -0.05; break;
+        case 'lookout': T.headY = Math.sin(t * 0.35) * 0.8; T.headP = -0.05; T.rSh = 1.95; T.rShR = 0.35; T.rEl = 2.1; T.lShR = 0.12; break;
+        case 'scan': T.headY = Math.sin(t * 0.45) * 0.9; T.headP = -0.08; T.lSh = -0.15; T.rSh = -0.15; T.lEl = 0.4; T.rEl = 0.4; T.lShR = 0.18; T.rShR = 0.18; break;
+        case 'helm': { const k = Math.sin(t * 0.6) * 0.12; T.lSh = 1.0 + k; T.rSh = 1.0 - k; T.lEl = 0.75; T.rEl = 0.75; T.lShR = 0.22; T.rShR = 0.22; if (storm) { T.lHipR = 0.18; T.rHipR = -0.18; T.lKn = 0.35; T.rKn = 0.35; T.crouch = 0.08; } break; }
+        case 'talk': T.headY = Math.sin(t * 0.7) * 0.2; T.headP = Math.sin(t * 2.3) * 0.06; T.rSh = 0.6 + Math.sin(t * 1.9) * 0.3; T.rEl = 1.2 + Math.sin(t * 2.7) * 0.3; T.lShR = 0.1; break;
+        case 'command': {
+          const cyc = (t % 5) / 5;
+          const pointing = cyc < 0.6;
+          T.headY = s?.lookY ?? 0;
+          T.twist = (s?.lookY ?? 0) * 0.5;
+          if (pointing) { T.rSh = 1.55; T.rShR = 0.25; T.rEl = 0.05; T.headP = -0.1; } else { T.rSh = 2.6; T.rEl = 0.4; T.rShR = 0.2 + Math.sin(t * 6) * 0.15; }
+          T.lShR = 0.55; T.lEl = 1.6; T.lSh = 0.1;
+          if (storm) { T.lHipR = 0.2; T.rHipR = -0.2; T.lKn = 0.4; T.rKn = 0.4; T.crouch = 0.1; }
+          break;
+        }
+        case 'look-waves': T.headY = s?.lookY ?? 1.0; T.twist = (s?.lookY ?? 1) * 0.35; T.headP = 0.05; T.lShR = 0.4; T.rShR = 0.4; T.lEl = 0.5; T.rEl = 0.5; T.lHipR = 0.18; T.rHipR = -0.18; T.lKn = 0.35; T.rKn = 0.35; T.crouch = 0.08; break;
+        default: { T.lean = Math.sin(t * 1.1) * 0.015; T.headY = Math.sin(t * 0.3 + this.id) * 0.3; T.lShR = 0.08; T.rShR = 0.08; T.lHipR = 0.04; T.rHipR = -0.04; }
+      }
+    }
+    // keep the upper body upright in world space as the deck rolls and pitches
+    const comp = this.state === STATE.INSIDE_CABIN ? 0 : 0.7;
+    T.side += roll * comp; T.lean += pitch * comp * 0.6;
+    if (!moving && Math.abs(roll) > 0.08) { T.lKn += Math.max(0, roll) * 0.8; T.rKn += Math.max(0, -roll) * 0.8; }
+    const k = 1 - Math.exp(-dt * 9);
+    for (const key in T) this.pose[key] += (T[key] - this.pose[key]) * k;
+    this.applyPose();
+    const faceTarget = this.interrupt && this.interrupt.kind === 'rail' ? this.interruptFace : null;
+    if (faceTarget !== null) this.turnTo(faceTarget, dt, 6);
+    this.root.position.set(this.x, 0.02, this.z);
+    this.root.rotation.y = this.facing;
+    this.root.visible = !this.hidden;
+    this.updateRope(s);
+    // oilskins in rain: the sailors' jackets and hats turn foul-weather yellow
+    const wet = this.role === 'captain' ? 0 : clamp((ctx.weatherLevel - 1.4) / 0.8, 0, 1);
+    this.mats.top.color.copy(this.baseTop).lerp(OILSKIN, wet); this.mats.hat.color.copy(this.baseHat).lerp(OILSKIN, wet);
+    if (this.sou) this.sou.visible = wet > 0.6;
+  }
+  applyPose() {
+    const P = this.pose;
+    this.hips.position.y = 0.95 - P.crouch;
+    this.spine.rotation.set(P.lean, P.twist, -P.side * 0.5);
+    this.neck.rotation.set(P.headP, P.headY, 0);
+    this.lArm.sh.rotation.set(-P.lSh, 0, P.lShR); this.lArm.el.rotation.x = -P.lEl;
+    this.rArm.sh.rotation.set(-P.rSh, 0, -P.rShR); this.rArm.el.rotation.x = -P.rEl;
+    this.lLeg.hp.rotation.set(-P.lHip, 0, P.lHipR); this.lLeg.kn.rotation.x = P.lKn;
+    this.rLeg.hp.rotation.set(-P.rHip, 0, P.rHipR); this.rLeg.kn.rotation.x = P.rKn;
+  }
+  /** The line in the sailor's hands runs up to the right block aloft and down to the pin rail. */
+  updateRope(s) {
+    const st = s && s.station && STATIONS[s.station];
+    const show = !this.hidden && !this.interrupt && st && st.aloft && (s.anim === 'rope' || s.anim === 'haul') && s.type === 'do';
+    this.rope.visible = this.rope2.visible = !!show;
+    if (!show) return;
+    const hand = this.lArm.hand.getWorldPosition(_tmpV).clone();
+    SHIP.group.worldToLocal(hand);
+    const place = (m, a, b) => { const d = b.clone().sub(a); const L = d.length(); m.position.copy(a).addScaledVector(d, 0.5); m.quaternion.setFromUnitVectors(_up, d.normalize()); m.scale.set(1, L, 1); };
+    place(this.rope, hand, new THREE.Vector3(...st.aloft));
+    place(this.rope2, hand, new THREE.Vector3(...st.pin));
+  }
+}
+const _tmpV = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
+
+/* ============================================================================
+   10. CREW BEHAVIOUR SYSTEM — assigns plans from weather, wind, ship motion,
+   role, standing orders and sail work that still needs doing.
+   ============================================================================ */
+const CREW_DEFS = [
+  { role: 'captain', name: 'CAPTAIN', title: 'Captain', start: STATIONS.captain.pos, face: 0, top: '#14213d', pants: '#14213d', hat: '#f4f4f0', hatType: 'cap' },
+  { role: 'helmsman', name: 'HELMSMAN', title: 'Helmsman', start: STATIONS.helm.pos, face: 0, top: '#5b7fa6', pants: '#2b2f36', hat: '#1f2a44' },
+  { role: 'lookout', name: 'LOOKOUT', title: 'Lookout', start: STATIONS.lookout.pos, face: 0, top: '#2a3a5c', pants: '#2b2f36', hat: '#d1572e', station: 'lookout' },
+  { role: 'sail', name: 'SAILOR 03', title: 'Sail handler · foremast', start: [2.4, 14.5], top: '#1e2c48', pants: '#353a42', hat: '#a33a2e', mast: 'fore', station: 'sailFore' },
+  { role: 'sail', name: 'SAILOR 04', title: 'Sail handler · mainmast', start: [3.85, 1.0], top: '#e8e4da', pants: '#2b2f36', hat: '#1f2a44', mast: 'main', station: 'sailMain' },
+  { role: 'sail', name: 'SAILOR 05', title: 'Sail handler · mizzen', start: [2.6, -10.5], top: '#1e2c48', pants: '#353a42', hat: '#6b7480', mast: 'mizzen', station: 'sailMizzen' },
+  { role: 'rigger', name: 'SAILOR 06', title: 'Rigging specialist', start: [-2.2, 11.2], top: '#3d4a2e', pants: '#2b2f36', hat: '#2a2f38', station: 'ropeFore' },
+  { role: 'rigger', name: 'SAILOR 07', title: 'Rigging specialist', start: [-3.85, -4.0], top: '#1e2c48', pants: '#353a42', hat: '#a33a2e', station: 'ropeMain' },
+  { role: 'deck', name: 'SAILOR 08', title: 'Deck sailor', start: [3.85, -5.0], top: '#e8e4da', pants: '#2b2f36', hat: '#1f2a44', rail: 'railMP' },
+  { role: 'deck', name: 'SAILOR 09', title: 'Deck sailor', start: [-2.0, 15.4], top: '#1e2c48', pants: '#353a42', hat: '#6b7480', rail: 'railFS' },
+  { role: 'deck', name: 'SAILOR 10', title: 'Deck sailor', start: [2.4, 8.0], top: '#2a3a5c', pants: '#2b2f36', hat: '#a33a2e', equip: 'crateMid', rail: 'railAP' },
+  { role: 'maint', name: 'SAILOR 11', title: 'Maintenance crew', start: [-3.85, 1.5], top: '#6d5a3e', pants: '#2b2f36', hat: '#2a2f38', shelter: 3 },
+  { role: 'talk', name: 'SAILOR 12', title: 'Deck sailor', start: STATIONS.talkA.pos, top: '#1e2c48', pants: '#353a42', hat: '#d1572e', equip: 'crateAft', rail: 'railAS', partner: 13 },
+  { role: 'talk', name: 'SAILOR 13', title: 'Deck sailor · cook', start: STATIONS.talkB.pos, top: '#f0ede4', pants: '#3b3f46', hat: '#f0ede4', shelter: 2, partner: 12 },
+];
+
+class CrewManager {
+  constructor(ship) {
+    this.ship = ship;
+    this.crew = CREW_DEFS.map((d, i) => new CrewMember(d, i, ship.deck));
+    this.captain = this.crew[0];
+    this.alertSeen = -1; this.cmdSeen = null; this.selected = null;
+    this.labels = this.crew.map((c) => { const el = document.createElement('div'); el.className = 'clabel' + (c.role === 'captain' ? ' cap' : ''); document.getElementById('labels').appendChild(el); return el; });
+  }
+  ctx() { return SIM.crewCtx; }
+  /** Re-plan everyone when the situation changes. */
+  checkSituation() {
+    const key = `${SIM.crewAlert}|${SIM.command}|${SIM.drill > 0}`;
+    if (key !== this.situationKey) {
+      const prevAlert = this.alertSeen;
+      this.situationKey = key; this.alertSeen = SIM.crewAlert;
+      for (const c of this.crew) this.reassign(c, prevAlert);
+    }
+    // sail work: make sure someone is assigned to any mast that needs hauling
+    for (const mast of ['fore', 'main', 'mizzen']) {
+      if (!SAILS.needs(mast)) continue;
+      const handler = this.crew.find((c) => c.role === 'sail' && c.def.mast === mast);
+      if (handler && !this.isSailWork(handler) && !handler.hidden && !this.isBusyStorm(handler)) this.planSail(handler);
+    }
+  }
+  isSailWork(c) { return (c.step && c.step.sailMast) || c.plan.some((s) => s.sailMast); }
+  isBusyStorm(c) { return c.step && c.step.urgent && !c.step.sailMast; }
+  reassign(c, prevAlert) {
+    // someone sheltering stays inside until it is calm enough; never teleport anyone
+    if (c.hidden || c.state === STATE.INSIDE_CABIN) {
+      if (this.effAlert() < (c.def.shelter ?? 9) - 1 || SIM.command === 'stations') this.planReturn(c);
+      return;
+    }
+    if (c.state === STATE.ENTERING_CABIN) return;
+    c.plan = []; c.step = null;
+    this.replan(c);
+  }
+  effAlert() { return Math.max(SIM.crewAlert, SIM.drill > 0 ? 3 : 0, SIM.command === 'prepare' ? 2 : 0); }
+  replan(c) {
+    if (c.hidden) { c.setPlan([{ type: 'inside', state: STATE.INSIDE_CABIN, label: 'Sheltering inside', until: () => this.effAlert() < (c.def.shelter ?? 9) - 1 }]); this.planReturnAfter(c); return; }
+    const A = this.effAlert(), act = CONFIG.activity[SIM.activity];
+    const idle = (lo, hi) => rnd(lo, hi) * act.idle;
+    const run = A >= 2;
+    const go = (to, extra = {}) => { const r = extra.run ?? run; return { type: 'go', to, run: r, state: extra.state ?? (r ? STATE.RUNNING : STATE.WALKING), label: extra.label ?? (r ? 'Hurrying across the deck' : 'Walking the deck') }; };
+    const doAt = (station, anim, state, label, dur, extra = {}) => ({ type: 'do', station, anim, state, label, dur, face: STATIONS[station]?.face, ...extra });
+    if (SIM.command === 'stations' && c.role !== 'captain' && c.role !== 'helmsman') {
+      const st = c.def.station || c.def.rail || c.def.equip || 'railMS';
+      c.setPlan([go(st, { label: 'Returning to station' }), doAt(st, 'idle', STATE.IDLE, 'Standing by at station', 9999, { until: () => SIM.command !== 'stations' })]);
+      return;
+    }
+    switch (c.role) {
+      case 'captain': return this.planCaptain(c, A);
+      case 'helmsman': return c.setPlan([go('helm', { run: false }), doAt('helm', 'helm', STATE.AT_HELM, A >= 3 ? 'Fighting the wheel through the seas' : 'Steering the ship', idle(20, 40))]);
+      case 'lookout':
+        if (A >= 2) return c.setPlan([...this.securePlan(c, 'crateFore', go, doAt), go('railFP', { label: 'Taking a braced position' }), doAt('railFP', 'rail', STATE.HOLDING_RAIL, 'Holding the forward railing', 9999, { until: () => this.effAlert() < 2, urgent: true })]);
+        return c.setPlan([go('lookout', { run: false }), doAt('lookout', 'lookout', STATE.INSPECTING, A >= 1 ? 'Watching the weather build' : 'Scanning the horizon', idle(14, 26)), ...(rng() < 0.4 ? [go('bowRail', { run: false, state: STATE.PATROLLING, label: 'Patrolling the foredeck' }), doAt('bowRail', 'idle', STATE.IDLE, 'Looking out over the bow', idle(5, 9))] : [])]);
+      case 'sail':
+        if (SAILS.needs(c.def.mast)) return this.planSail(c);
+        if (A >= 3) return c.setPlan([go(c.def.station), doAt(c.def.station, 'rope', STATE.HOLDING_ROPE, 'Keeping tension on the sheets', 9999, { until: () => this.effAlert() < 3 || SAILS.needs(c.def.mast), urgent: true })]);
+        if (A >= 1) return c.setPlan([go(c.def.station, { run: A >= 2 }), doAt(c.def.station, 'inspect', STATE.INSPECTING, 'Checking the sails and rigging aloft', idle(8, 14))]);
+        return c.setPlan([go(pick(PATROL), { run: false, state: STATE.PATROLLING, label: 'Patrolling the deck' }), doAt(c.def.station, 'idle', STATE.IDLE, 'Taking a breather', idle(3, 6), { face: undefined }), go(c.def.station, { run: false }), doAt(c.def.station, 'inspect', STATE.INSPECTING, 'Checking the sails aloft', idle(6, 10))]);
+      case 'rigger':
+        if (A >= 2) return c.setPlan([go(c.def.station, { label: 'Running to the rigging' }), doAt(c.def.station, 'rope', STATE.HOLDING_ROPE, A >= 3 ? 'Securing rigging under load' : 'Taking up slack in the braces', A >= 3 ? 9999 : idle(10, 16), { until: A >= 3 ? () => this.effAlert() < 3 : undefined, urgent: true }), ...(A < 3 ? [doAt(c.def.station, 'inspect', STATE.INSPECTING, 'Checking the lines', idle(4, 6))] : [])]);
+        return c.setPlan([go(c.def.station, { run: false }), doAt(c.def.station, A >= 1 ? 'inspect' : 'coil', A >= 1 ? STATE.INSPECTING : STATE.WORKING, A >= 1 ? 'Inspecting the rigging' : 'Coiling down lines', idle(8, 14)), go(pick(PATROL), { run: false, state: STATE.PATROLLING, label: 'Patrolling the deck' })]);
+      case 'deck': {
+        if (A >= 3) {
+          const pre = c.def.equip ? this.securePlan(c, c.def.equip, go, doAt) : [];
+          return c.setPlan([...pre, go(c.def.rail, { label: 'Moving to a safe position' }), doAt(c.def.rail, 'rail', STATE.HOLDING_RAIL, 'Holding the railing against the seas', 9999, { until: () => this.effAlert() < 3, urgent: true })]);
+        }
+        if (A >= 2 && c.def.equip) return c.setPlan([...this.securePlan(c, c.def.equip, go, doAt), go(c.def.rail), doAt(c.def.rail, 'brace', STATE.BRACING, 'Bracing near the rail', idle(10, 16))]);
+        if (A === 0 && c.def.equip && SHIP.equipment.find((e) => e.id === c.def.equip).secured) return c.setPlan([go(c.def.equip, { run: false }), doAt(c.def.equip, 'secure', STATE.WORKING, 'Unlashing the deck stores', 3.5, { onDone: () => this.setSecured(c.def.equip, false) })]);
+        return c.setPlan(this.routine(c, A, go, doAt, idle));
+      }
+      case 'maint':
+        if (A >= (c.def.shelter ?? 9)) return this.planShelter(c);
+        if (A >= 2) return c.setPlan([go('railMS'), doAt('railMS', 'brace', STATE.BRACING, 'Bracing amidships', idle(8, 12))]);
+        return c.setPlan([go(pick(['s1', 's3', 'h1', 'a1']), { run: false, state: STATE.WALKING, label: 'Heading to the next job' }), { type: 'do', anim: 'scrub', state: STATE.WORKING, label: 'Scrubbing the deck', dur: idle(10, 16) }, go(pick(['railMS', 'railAS', 'railMP']), { run: false }), { type: 'do', anim: 'coil', state: STATE.WORKING, label: 'Checking deck fittings', dur: idle(6, 9) }]);
+      case 'talk':
+        if (A >= (c.def.shelter ?? 9)) return this.planShelter(c);
+        if (A >= 2 && c.def.equip) {
+          const tail = A >= 3 ? [go(c.def.rail, { label: 'Moving to a safe position' }), doAt(c.def.rail, 'rail', STATE.HOLDING_RAIL, 'Holding on at the rail', 9999, { until: () => this.effAlert() < 3, urgent: true })] : [go(c.def.rail), doAt(c.def.rail, 'brace', STATE.BRACING, 'Bracing near the rail', idle(8, 12))];
+          return c.setPlan([...this.securePlan(c, c.def.equip, go, doAt), ...tail]);
+        }
+        if (A >= 1) return c.setPlan(this.routine(c, A, go, doAt, idle));
+        {
+          const spot = c.def.partner > c.id ? 'talkA' : 'talkB';
+          return c.setPlan([go(spot, { run: false, label: 'Joining a crewmate' }), doAt(spot, 'talk', STATE.TALKING, 'Talking with a crewmate', idle(12, 22)), go(pick(PATROL), { run: false, state: STATE.PATROLLING, label: 'Patrolling the deck' }), { type: 'do', anim: 'idle', state: STATE.IDLE, label: 'Watching the sea', dur: idle(4, 8) }]);
+        }
+    }
+  }
+  routine(c, A, go, doAt, idle) {
+    const r = rng();
+    if (r < 0.3) return [go(pick(PATROL), { run: false, state: STATE.PATROLLING, label: 'Patrolling the deck' }), { type: 'do', anim: A >= 1 ? 'scan' : 'idle', state: STATE.IDLE, label: A >= 1 ? 'Eyeing the weather' : 'Standing at ease', dur: idle(3, 7) }];
+    if (r < 0.55) return [go(pick(['h1', 'h2', 's2', 's4', 'a2'])), { type: 'do', anim: 'scrub', state: STATE.WORKING, label: 'Scrubbing the deck', dur: idle(8, 14) }];
+    if (r < 0.75) { const st = pick(['railMP', 'railMS', 'railAP', 'railAS', 'bowRail']); return [go(st, { run: false }), doAt(st, 'idle', STATE.IDLE, 'Watching the sea from the rail', idle(5, 10))]; }
+    const from = pick(['crateMid', 'crateAft', 'crateFore']), to = pick(['midDoor', 'aftDoor']);
+    return [go(from, { run: false }), doAt(from, 'secure', STATE.WORKING, 'Picking up stores', 1.6, { onDone: (m) => { m.box.visible = true; } }), go(to, { run: false, label: 'Carrying stores aft' }), doAt(to, 'idle', STATE.WORKING, 'Delivering stores', 1.2, { onDone: (m) => { m.box.visible = false; } })];
+  }
+  securePlan(c, equip, go, doAt) {
+    const eq = SHIP.equipment.find((e) => e.id === equip);
+    if (eq.secured) return [];
+    return [go(equip, { run: true, label: 'Running to loose equipment' }), doAt(equip, 'secure', STATE.WORKING, 'Lashing down loose equipment', 4.5, { urgent: true, onDone: () => this.setSecured(equip, true) })];
+  }
+  setSecured(id, on) { const eq = SHIP.equipment.find((e) => e.id === id); eq.secured = on ? 1 : 0; eq.straps.visible = on; }
+  planSail(c) {
+    const m = c.def.mast, reef = SAILS.target[m] < SAILS.dep[m];
+    const verb = m === 'fore' ? 'fore' : m === 'main' ? 'main' : 'mizzen';
+    c.box.visible = false;
+    c.setPlan([
+      { type: 'go', to: c.def.station, run: this.effAlert() >= 1 || reef, state: STATE.RUNNING, label: `Running to the ${verb} sail station`, sailMast: m },
+      { type: 'do', station: c.def.station, anim: 'haul', state: STATE.ADJUSTING_SAIL, label: reef ? `Reefing the ${verb} sails` : `Setting the ${verb} sails`, face: STATIONS[c.def.station].face, sailMast: m, dur: 9999, maxT: 80,
+        onTick: () => { SAILS.workers[m] += 1; }, until: () => !SAILS.needs(m) },
+    ]);
+  }
+  planShelter(c) {
+    const door = Math.abs(c.z - 4) < Math.abs(c.z + 16) ? 'midDoor' : 'aftDoor';
+    c.box.visible = false;
+    c.setPlan([{ type: 'enter', door, run: true, state: STATE.SEEKING_SHELTER, label: 'Running for the cabin' }, { type: 'inside', state: STATE.INSIDE_CABIN, label: 'Sheltering inside', until: () => this.effAlert() < (c.def.shelter ?? 9) - 1 }]);
+    c.shelterDoor = door;
+    this.planReturnAfter(c);
+  }
+  planReturnAfter(c) { c.plan.push({ type: 'exit', door: c.shelterDoor || 'aftDoor', state: STATE.RETURNING_TO_DECK, label: 'Returning to deck', delay: rnd(1, 5) }); }
+  planReturn(c) { c.setPlan([{ type: 'exit', door: c.shelterDoor || 'aftDoor', state: STATE.RETURNING_TO_DECK, label: 'Returning to deck', delay: rnd(1, 6) }]); }
+  planCaptain(c, A) {
+    const go = { type: 'go', to: 'captain', run: false, state: STATE.WALKING, label: 'Returning to the helm' };
+    if (A >= 2) {
+      // point at whichever stations have crew working, glance at the seas between orders
+      const targets = () => this.crew.filter((o) => o !== c && !o.hidden && o.step && o.step.type === 'do' && o.step.urgent !== undefined);
+      const lookAt = (o) => o ? angDiff(Math.atan2(o.x - c.x, o.z - c.z), c.facing) : 0;
+      const windward = () => clamp(angDiff(Math.atan2(-SIM.windLocal.x, -SIM.windLocal.z), c.facing), -1.4, 1.4);
+      const steps = [go];
+      for (let i = 0; i < 4; i++) {
+        steps.push({ type: 'do', anim: 'command', state: STATE.COMMANDING, label: A >= 3 ? 'Coordinating the storm response' : 'Ordering the crew to shorten sail', dur: 5, face: 0, onTick: (dt, m) => { if (!m.step.who || m.step.t % 5 < dt) { const ts = targets(); m.step.who = ts.length ? pick(ts) : null; } m.step.lookY = clamp(lookAt(m.step.who), -1.3, 1.3); } });
+        if (i % 2 === 1) steps.push({ type: 'do', anim: 'look-waves', state: STATE.COMMANDING, label: 'Watching the incoming waves', dur: 2.5, face: 0, onTick: (dt, m) => { m.step.lookY = windward(); } });
+      }
+      return c.setPlan(steps);
+    }
+    if (A === 1) return c.setPlan([go, { type: 'do', anim: 'scan', state: STATE.INSPECTING, label: 'Monitoring the horizon', dur: rnd(10, 16), face: 0 }]);
+    if (rng() < 0.35) return c.setPlan([{ type: 'go', to: 'railZP', run: false, state: STATE.WALKING, label: 'Taking a turn about the deck' }, { type: 'do', anim: 'lookout', state: STATE.IDLE, label: 'Observing the horizon', dur: rnd(6, 10), face: FACE.port }, go]);
+    return c.setPlan([go, { type: 'do', anim: rng() < 0.5 ? 'lookout' : 'idle', state: STATE.IDLE, label: 'Calmly observing the horizon', dur: rnd(10, 18), face: 0 }]);
+  }
+  update(dt) {
+    this.checkSituation();
+    const ctx = SIM.crewCtx;
+    ctx.replan = (c) => this.replan(c);
+    for (const c of this.crew) c.update(dt, ctx);
+    for (const d of Object.values(SHIP.doors)) d.update(dt);
+  }
+  counts() {
+    const n = { inside: 0, ropes: 0, sails: 0, bracing: 0 };
+    for (const c of this.crew) { const s = c.displayState(); if (c.hidden) n.inside++; if (s === STATE.HOLDING_ROPE) n.ropes++; if (s === STATE.ADJUSTING_SAIL) n.sails++; if (s === STATE.BRACING || s === STATE.HOLDING_RAIL) n.bracing++; }
+    return n;
+  }
+  updateLabels(show, debug) {
+    const w = window.innerWidth, h = window.innerHeight;
+    this.crew.forEach((c, i) => {
+      const el = this.labels[i];
+      const visible = (show || debug || c === this.selected) && !c.hidden;
+      if (!visible) { el.style.display = 'none'; return; }
+      const p = c.neck.getWorldPosition(_tmpV).add(new THREE.Vector3(0, 0.45, 0)).project(camera);
+      if (p.z > 1 || p.x < -1.2 || p.x > 1.2 || p.y < -1.2 || p.y > 1.2) { el.style.display = 'none'; return; }
+      el.style.display = 'block';
+      el.style.left = `${(p.x + 1) / 2 * w}px`; el.style.top = `${(1 - p.y) / 2 * h}px`;
+      el.innerHTML = `<b>${c.name}</b>${debug ? `<small>${c.displayState()}</small>` : ''}`;
+    });
+  }
+}
+
+/* ============================================================================
+   11. SIMULATION STATE + WEATHER SYSTEM — smooth transitions of every
+   environmental parameter; crew alert rises at once, falls after the sea eases.
+   ============================================================================ */
+const SIM = {
+  weather: 'clear', crewAlert: 0, command: null, drill: 0, activity: 'normal', paused: false, slow: false, animSpeed: 1, crewSpeed: 1,
+  transition: 10, tod: 0.33, maxSpeed: 7, sailDeploy: 1, heading: 45 * DEG, autoSail: true, motion: 1,
+  windLocal: { x: 0, z: 1, worldX: 0, worldZ: 1 }, weatherLevel: 0, alertTimer: 0, pendingAlert: null,
+  crewCtx: { alert: 0, weatherLevel: 0, severity: 0, impact: 0, roll: 0, pitch: 0, speedMul: 1, crew: [] },
+};
+const PARAM_KEYS = ['waveHeight', 'waveSpeed', 'steepness', 'wind', 'windDir', 'clouds', 'dark', 'rain', 'lightning', 'fog', 'foam', 'level'];
+class WeatherSystem {
+  constructor() {
+    const c = CONFIG.weather.clear;
+    this.cur = { ...c, windDir: 200, level: 0 }; this.target = { ...this.cur }; this.dur = {};
+    for (const k of PARAM_KEYS) this.dur[k] = 10;
+  }
+  set(name, instant = false) {
+    const w = CONFIG.weather[name]; SIM.weather = name;
+    for (const k of ['waveHeight', 'waveSpeed', 'steepness', 'wind', 'clouds', 'dark', 'rain', 'lightning', 'fog', 'foam']) { this.target[k] = w[k]; this.dur[k] = SIM.transition; }
+    this.target.level = w.level; this.dur.level = SIM.transition;
+    if (instant) Object.assign(this.cur, this.target);
+    // crew prepare as soon as the weather turns; they stand down once the sea has started to ease
+    if (w.level >= SIM.crewAlert || instant) { SIM.crewAlert = w.level; SIM.pendingAlert = null; }
+    else { SIM.pendingAlert = w.level; SIM.alertTimer = SIM.transition * 0.45; }
+    UI.syncFromWeather();
+  }
+  setParam(k, v) { this.target[k] = v; this.dur[k] = 1.2; }
+  update(dt) {
+    for (const k of PARAM_KEYS) {
+      const d = this.target[k] - this.cur[k];
+      if (k === 'windDir') { const a = angDiff(this.target[k] * DEG, this.cur[k] * DEG) / DEG; this.cur[k] += a * Math.min(1, dt * 3 / this.dur[k]); continue; }
+      this.cur[k] += d * Math.min(1, dt * 3 / Math.max(0.1, this.dur[k]));
+    }
+    if (SIM.pendingAlert !== null) { SIM.alertTimer -= dt; if (SIM.alertTimer <= 0) { SIM.crewAlert = SIM.pendingAlert; SIM.pendingAlert = null; } }
+    SIM.weatherLevel = this.cur.level;
+  }
+}
+
+/* ============================================================================
+   12. ENVIRONMENT — time of day x weather -> sky, sun, sea colours, fog, lights
+   ============================================================================ */
+const TOD_KEYS = [
+  { elev: 14, az: 70, zen: '#5d8fc8', hor: '#efcfae', sun: '#ffd8a8', sunI: 2.5, hs: '#bcd2ee', hg: '#2d4e66', hi: 0.85, deep: '#0e3a58', shal: '#2a7d8c', cl: '#fff3e6', exp: 0.95, night: 0 },
+  { elev: 50, az: 108, zen: '#3a78c2', hor: '#bcd6ea', sun: '#fff4e2', sunI: 3.2, hs: '#cfe3ff', hg: '#1d4a66', hi: 1.0, deep: '#0a3555', shal: '#1f7a8c', cl: '#ffffff', exp: 0.92, night: 0 },
+  { elev: 4, az: 235, zen: '#34507f', hor: '#f09c62', sun: '#ff9a52', sunI: 2.3, hs: '#e9b48e', hg: '#3b3550', hi: 0.7, deep: '#10304a', shal: '#3a6672', cl: '#ffd2b0', exp: 0.98, night: 0.1 },
+  { elev: 34, az: 210, zen: '#040a17', hor: '#13233a', sun: '#8fa6d6', sunI: 0.35, hs: '#23344f', hg: '#050a12', hi: 0.32, deep: '#030b14', shal: '#0b2433', cl: '#2a3448', exp: 1.15, night: 1 },
+];
+const ENV = {
+  zen: new THREE.Color(), hor: new THREE.Color(), sunC: new THREE.Color(), hs: new THREE.Color(), hg: new THREE.Color(), deep: new THREE.Color(), shal: new THREE.Color(), cl: new THREE.Color(),
+  sunDir: new THREE.Vector3(), envKey: '', envTimer: 0, pmrem: null, envScene: null,
+  sample(t) {
+    const seg = clamp(t, 0, 0.9999) * 3, i = Math.floor(seg), f = smooth(seg - i), A = TOD_KEYS[i], B = TOD_KEYS[i + 1];
+    const m = (k) => col(A[k]).lerp(col(B[k]), f);
+    return { elev: lerp(A.elev, B.elev, f), az: lerp(A.az, B.az, f), zen: m('zen'), hor: m('hor'), sun: m('sun'), sunI: lerp(A.sunI, B.sunI, f), hs: m('hs'), hg: m('hg'), hi: lerp(A.hi, B.hi, f), deep: m('deep'), shal: m('shal'), cl: m('cl'), exp: lerp(A.exp, B.exp, f), night: lerp(A.night, B.night, f) };
+  },
+  update(dt, W, shipPos) {
+    const s = this.sample(SIM.tod), dark = W.dark, cloud = W.clouds;
+    const grey = (c, a, b) => c.lerp(col(a).lerp(col(b), clamp((dark - 0.3) / 0.6, 0, 1)), clamp(dark * 1.25, 0, 0.92));
+    const nightDim = 1 - s.night * 0.85;
+    this.zen.copy(s.zen); grey(this.zen, '#6a7480', '#262d35'); this.zen.multiplyScalar(lerp(1, nightDim, dark * 0.5 + 0.5 * s.night));
+    this.hor.copy(s.hor); grey(this.hor, '#8f989f', '#454e56'); if (s.night > 0.5) this.hor.multiplyScalar(0.6 + 0.4 * (1 - dark));
+    this.sunC.copy(s.sun);
+    this.hs.copy(s.hs); grey(this.hs, '#9aa5b1', '#59626c');
+    this.hg.copy(s.hg);
+    this.deep.copy(s.deep).lerp(col('#0b1d29'), dark * 0.8 * (1 - s.night));
+    this.shal.copy(s.shal).lerp(col('#2c4a52'), dark * 0.85 * (1 - s.night));
+    this.cl.copy(s.cl);
+    const el = s.elev * DEG, az = s.az * DEG;
+    this.sunDir.set(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)).normalize();
+    // lights
+    const sunI = s.sunI * (1 - 0.82 * Math.pow(cloud, 1.4)) * (1 - dark * 0.35);
+    sun.color.copy(this.sunC); sun.intensity = sunI;
+    sun.position.copy(shipPos).addScaledVector(this.sunDir, 150); sun.target.position.copy(shipPos);
+    hemi.color.copy(this.hs); hemi.groundColor.copy(this.hg); hemi.intensity = s.hi * (0.85 + cloud * 0.35) * (1 - dark * 0.3) + LIGHTNING.value * 1.5;
+    renderer.toneMappingExposure = s.exp * (1 + dark * 0.12);
+    scene.fog.color.copy(this.hor); scene.fog.density = W.fog * (1 + s.night * 0.6);
+    const su = sky.material.uniforms;
+    su.uSunDir.value.copy(this.sunDir); su.uZenith.value.copy(this.zen); su.uHorizon.value.copy(this.hor); su.uSunCol.value.copy(this.sunC).multiplyScalar(s.night > 0.5 ? 0.4 : 1);
+    su.uCloud.value = cloud; su.uDark.value = dark; su.uFlash.value = LIGHTNING.value; su.uNight.value = s.night;
+    su.uCloudLit.value.copy(this.cl).lerp(col('#7d8792'), dark * 0.7); su.uCloudDark.value.copy(col('#4f5864')).lerp(col('#20262d'), dark).multiplyScalar(lerp(1, 0.35, s.night));
+    const ou = OCEAN.u;
+    ou.uSunDir.value.copy(this.sunDir); ou.uSunCol.value.copy(this.sunC).multiplyScalar(sunI / 3); ou.uZenith.value.copy(this.zen); ou.uHorizon.value.copy(this.hor);
+    ou.uDeep.value.copy(this.deep); ou.uShallow.value.copy(this.shal); ou.uFogCol.value.copy(this.hor); ou.uFogDen.value = scene.fog.density;
+    ou.uAmb.value.copy(this.hs).multiplyScalar(hemi.intensity * 0.45); ou.uOvercast.value = clamp(cloud * 0.8 + dark * 0.3, 0, 1);
+    ou.uFlash.value = LIGHTNING.value; ou.uFoam.value = W.foam; ou.uRain.value = W.rain; ou.uRipple.value = 0.25 + clamp(W.wind / 25, 0, 1.2);
+    // ship lanterns at night and in heavy weather
+    const lamp = clamp(s.night + dark * 0.6, 0, 1.4);
+    for (const l of SHIP.lamps) l.material.emissiveIntensity = lamp * 2.2;
+    SHIP.deckLight.intensity = lamp * 9; SHIP.sternLight.intensity = lamp * 7;
+    // refresh the reflection environment when the light changes noticeably
+    this.envTimer -= dt;
+    const key = [this.zen.getHexString(), this.hor.getHexString()].join('');
+    if (key !== this.envKey && this.envTimer <= 0) { this.envKey = key; this.envTimer = 1.5; this.rebuildEnv(); }
+  },
+  rebuildEnv() {
+    if (!this.envScene) {
+      this.envScene = new THREE.Scene();
+      this.envMat = new THREE.ShaderMaterial({ side: THREE.BackSide, uniforms: { z: { value: new THREE.Color() }, h: { value: new THREE.Color() }, s: { value: new THREE.Color() }, d: { value: new THREE.Vector3() } },
+        vertexShader: 'varying vec3 v; void main(){ v = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: 'uniform vec3 z; uniform vec3 h; uniform vec3 s; uniform vec3 d; varying vec3 v; void main(){ vec3 n = normalize(v); vec3 c = n.y > 0.0 ? mix(h, z, pow(n.y, 0.5)) : mix(h, h * 0.25, min(1.0, -n.y * 3.0)); c += s * pow(max(dot(n, d), 0.0), 40.0) * 2.0; gl_FragColor = vec4(c, 1.0); }' });
+      this.envScene.add(new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), this.envMat));
+      this.pmrem = new THREE.PMREMGenerator(renderer);
+    }
+    this.envMat.uniforms.z.value.copy(this.zen); this.envMat.uniforms.h.value.copy(this.hor); this.envMat.uniforms.s.value.copy(this.sunC).multiplyScalar(sun.intensity / 3); this.envMat.uniforms.d.value.copy(this.sunDir);
+    const old = this.envRT; this.envRT = this.pmrem.fromScene(this.envScene, 0.02);
+    scene.environment = this.envRT.texture;
+    if (old) old.dispose();
+  },
+};
+
+/* ============================================================================
+   13. CAMERA CONTROLLER — OrbitControls riding along with the ship, presets in
+   the ship's heading frame, crew follow, double-click focus, cinematic tour.
+   ============================================================================ */
+const CAMERA_PRESETS = {
+  overview: { cam: [64, 15, 68], tgt: [0, 13.5, 3] },
+  side: { cam: [96, 15, 2], tgt: [0, 14, 0] },
+  bow: { cam: [9, 9, 68], tgt: [0, 10, 16] },
+  stern: { cam: [-16, 12, -58], tgt: [0, 7, -12] },
+  deck: { cam: [3.4, 7.2, -21.5], tgt: [0, 1.2, 0] },
+};
+const CAM = {
+  controls: null, anim: null, follow: null, cine: null, last: new THREE.Vector3(), name: 'overview',
+  init() {
+    const c = this.controls = new OrbitControls(camera, canvas);
+    c.enableDamping = true; c.dampingFactor = 0.08; c.minDistance = 4; c.maxDistance = 420; c.maxPolarAngle = Math.PI * 0.495; c.screenSpacePanning = true;
+    c.addEventListener('start', () => { this.anim = null; if (this.cine) this.stopCine(); });
+    this.last.copy(SHIP.group.position);
+    this.go('overview', true);
+  },
+  frame() { const yaw = PHYS.yaw; return { o: new THREE.Vector3(PHYS.x, PHYS.y, PHYS.z), r: new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw)), f: new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)) }; },
+  toWorld(v) { const F = this.frame(); return F.o.clone().addScaledVector(F.r, v[0]).add(new THREE.Vector3(0, v[1], 0)).addScaledVector(F.f, v[2]); },
+  go(name, instant = false) {
+    this.follow = null;
+    if (name === 'cinematic') return this.startCine();
+    if (this.cine) this.stopCine();
+    if (name === 'reset') name = 'overview';
+    this.name = name;
+    if (name === 'captain') { this.focusCrew(CREW.captain, instant); return; }
+    const p = CAMERA_PRESETS[name];
+    // narrow portrait screens need the camera further back to fit the whole rig
+    const fit = name === 'deck' ? 1 : clamp(1.35 / camera.aspect, 1, 2.6);
+    const cam = p.cam.map((v, i) => p.tgt[i] + (v - p.tgt[i]) * fit);
+    this.animateTo(() => this.toWorld(cam), () => this.toWorld(p.tgt), instant ? 0 : 1.8);
+    UI.camBadge(name);
+  },
+  focusCrew(c, instant = false) {
+    this.follow = c;
+    const offs = () => { const head = c.neck.getWorldPosition(new THREE.Vector3()); const F = this.frame(); const back = new THREE.Vector3(Math.sin(c.facing), 0, Math.cos(c.facing)); const wb = F.r.clone().multiplyScalar(back.x).addScaledVector(F.f, back.z); return head.clone().addScaledVector(wb, 4.5).addScaledVector(F.r, 2.2).add(new THREE.Vector3(0, 2.0, 0)); };
+    this.animateTo(offs, () => c.neck.getWorldPosition(new THREE.Vector3()), instant ? 0 : 1.6);
+    UI.camBadge(c.role === 'captain' ? 'captain' : c.name);
+  },
+  animateTo(camFn, tgtFn, dur) {
+    if (dur <= 0) { camera.position.copy(camFn()); this.controls.target.copy(tgtFn()); this.controls.update(); this.anim = null; return; }
+    this.anim = { camFn, tgtFn, t: 0, dur, c0: camera.position.clone(), t0: this.controls.target.clone() };
+  },
+  focusPoint(p) { const off = camera.position.clone().sub(this.controls.target); const d = Math.max(8, off.length() * 0.6); off.setLength(d); this.follow = null; this.animateTo(() => p.clone().add(off), () => p.clone(), 1.1); },
+  startCine() {
+    this.cine = { t: 0, i: 0 };
+    document.getElementById('cineBar').hidden = false; UI.camBadge('cinematic');
+    this.cineShots = [
+      { cam: [70, 14, 72], tgt: [0, 14, 2], dur: 9 }, { cam: [100, 12, -10], tgt: [0, 15, -2], dur: 9 }, { cam: [12, 30, 40], tgt: [0, 22, 8], dur: 8 },
+      { cam: [3.4, 7.2, -21.5], tgt: [0, 1.2, 0], dur: 9 }, { crew: true, dur: 8 }, { cam: [-14, 11, -56], tgt: [0, 7, -12], dur: 8 }, { cam: [-80, 8, 40], tgt: [0, 12, 4], dur: 9 },
+    ];
+    this.nextShot();
+  },
+  nextShot() {
+    const s = this.cineShots[this.cine.i % this.cineShots.length];
+    this.cine.shot = s; this.cine.t = 0;
+    if (s.crew) { const c = CREW.captain; this.follow = c; this.animateTo(() => c.neck.getWorldPosition(new THREE.Vector3()).add(this.frame().r.multiplyScalar(5)).add(this.frame().f.multiplyScalar(4)).add(new THREE.Vector3(0, 1.6, 0)), () => c.neck.getWorldPosition(new THREE.Vector3()), 3.5); }
+    else { this.follow = null; const drift = (v, k) => () => { const t = this.cine ? this.cine.t : 0; const a = t * 0.025 * k; const c = Math.cos(a), sn = Math.sin(a); return this.toWorld([v[0] * c - v[2] * sn, v[1], v[0] * sn + v[2] * c]); }; this.animateTo(drift(s.cam, 1), drift(s.tgt, 0), 3.5); this.anim.keep = true; }
+  },
+  stopCine() { this.cine = null; document.getElementById('cineBar').hidden = true; if (this.anim) this.anim.keep = false; this.anim = null; this.follow = null; UI.camBadge('free'); },
+  update(dt) {
+    // ride along with the ship
+    const p = SHIP.group.position, d = p.clone().sub(this.last); this.last.copy(p);
+    camera.position.add(d); this.controls.target.add(d);
+    if (this.cine) { this.cine.t += dt; if (this.cine.t > this.cine.shot.dur) { this.cine.i++; this.nextShot(); } }
+    if (this.anim) {
+      const a = this.anim; a.t += dt; const k = easeInOut(Math.min(1, a.t / a.dur));
+      a.c0.add(d); a.t0.add(d);
+      camera.position.lerpVectors(a.c0, a.camFn(), k); this.controls.target.lerpVectors(a.t0, a.tgtFn(), k);
+      if (a.t >= a.dur && !a.keep) this.anim = null;
+      if (a.keep && a.t >= a.dur) { camera.position.copy(a.camFn()); this.controls.target.copy(a.tgtFn()); }
+    } else if (this.follow) {
+      const tgt = this.follow.neck.getWorldPosition(new THREE.Vector3());
+      const delta = tgt.clone().sub(this.controls.target).multiplyScalar(Math.min(1, dt * 4));
+      this.controls.target.add(delta); camera.position.add(delta);
+    }
+    this.controls.update();
+    this.guard();
+  },
+  /** Keep the camera out of the hull and above the sea. */
+  guard() {
+    const F = this.frame(), rel = camera.position.clone().sub(F.o);
+    const lx = rel.dot(F.r), lz = rel.dot(F.f), ly = rel.y;
+    if (lz > -25.5 && lz < 25.5 && Math.abs(lx) < deckHalf(lz) + 0.6 && ly < 1.6) camera.position.y += 1.6 - ly;
+    const w = OCEAN.heightAt(camera.position.x, camera.position.z) + 1.2;
+    if (camera.position.y < w) camera.position.y = w;
+  },
+};
+
+/* ============================================================================
+   14. AUDIO MANAGER — Web Audio synthesis: sea, wind, rain, thunder, creaks,
+   flogging canvas and distant crew calls. Starts only on a user gesture.
+   ============================================================================ */
+const AUDIO = {
+  ctx: null, on: false, vol: 0.6, nodes: {}, creakT: 2, shoutT: 6, flapT: 3,
+  start() {
+    if (this.ctx) { this.ctx.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) { toast('Web Audio is not available in this browser.'); return; }
+    const c = this.ctx = new AC();
+    this.master = c.createGain(); this.master.gain.value = 0; this.master.connect(c.destination);
+    const buf = c.createBuffer(1, c.sampleRate * 3, c.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    this.noise = buf;
+    const loop = (type, f, q) => { const s = c.createBufferSource(); s.buffer = buf; s.loop = true; s.playbackRate.value = rnd(0.8, 1.1); const fl = c.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q; const g = c.createGain(); g.gain.value = 0; s.connect(fl); fl.connect(g); g.connect(this.master); s.start(); return { fl, g }; };
+    this.nodes.sea = loop('lowpass', 420, 0.5); this.nodes.surf = loop('bandpass', 900, 0.6); this.nodes.wind = loop('bandpass', 700, 1.4); this.nodes.rain = loop('highpass', 2600, 0.4);
+  },
+  burst(t, dur, type, f, g, q = 1) { const c = this.ctx, s = c.createBufferSource(); s.buffer = this.noise; const fl = c.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q; const gn = c.createGain(); gn.gain.setValueAtTime(0.0001, t); gn.gain.linearRampToValueAtTime(g, t + Math.min(0.05, dur * 0.2)); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur); s.connect(fl); fl.connect(gn); gn.connect(this.master); s.start(t, Math.random() * 2, dur + 0.1); return fl; },
+  thunder(delay) {
+    if (!this.ctx || !this.on) return;
+    const t = this.ctx.currentTime + Math.min(delay, 4);
+    this.burst(t, 0.25, 'lowpass', 900, 0.5); const f = this.burst(t + 0.05, rnd(3, 5), 'lowpass', 180, 0.9, 0.7); f.frequency.exponentialRampToValueAtTime(60, t + 4);
+  },
+  creak(k) {
+    const c = this.ctx, t = c.currentTime, o = c.createOscillator(), fl = c.createBiquadFilter(), g = c.createGain();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(rnd(70, 110), t); o.frequency.linearRampToValueAtTime(rnd(120, 170), t + 0.45);
+    fl.type = 'bandpass'; fl.frequency.value = 600; fl.Q.value = 6; g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.05 * k, t + 0.1); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+    o.connect(fl); fl.connect(g); g.connect(this.master); o.start(t); o.stop(t + 0.6);
+  },
+  shout() {
+    const c = this.ctx, t = c.currentTime, o = c.createOscillator(), g = c.createGain(), p = c.createStereoPanner ? c.createStereoPanner() : null;
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(rnd(170, 240), t); o.frequency.linearRampToValueAtTime(rnd(130, 170), t + 0.5);
+    const f1 = c.createBiquadFilter(); f1.type = 'bandpass'; f1.frequency.value = 750; f1.Q.value = 5; const f2 = c.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 1150; f2.Q.value = 6;
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.035, t + 0.06); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+    o.connect(f1); o.connect(f2); f1.connect(g); f2.connect(g); if (p) { p.pan.value = rnd(-0.7, 0.7); g.connect(p); p.connect(this.master); } else g.connect(this.master);
+    o.start(t); o.stop(t + 0.6);
+  },
+  update(dt, W) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.master.gain.setTargetAtTime(this.on ? this.vol * 0.8 : 0, t, 0.2);
+    if (!this.on) return;
+    const n = this.nodes, wave = clamp(W.waveHeight / 6, 0, 1.3), wind = clamp(W.wind / 30, 0, 1.3);
+    n.sea.g.gain.setTargetAtTime(0.18 + wave * 0.32 + Math.sin(t * 0.4) * 0.05, t, 0.4);
+    n.surf.g.gain.setTargetAtTime(0.03 + clamp(PHYS.speed / 6, 0, 1) * 0.06 + wave * 0.08, t, 0.4);
+    n.wind.g.gain.setTargetAtTime(Math.pow(wind, 1.6) * 0.32, t, 0.5);
+    n.wind.fl.frequency.setTargetAtTime(500 + wind * 900 + Math.sin(t * 0.7) * 200 * wind, t, 0.6);
+    n.rain.g.gain.setTargetAtTime(W.rain * 0.22, t, 0.5);
+    this.creakT -= dt * (0.4 + Math.abs(PHYS.vr) * 6 + Math.abs(PHYS.vp) * 4);
+    if (this.creakT <= 0) { this.creak(0.5 + clamp(PHYS.severity, 0, 1.5)); this.creakT = rnd(3, 7); }
+    if (SIM.crewAlert >= 2 || SIM.drill > 0) { this.shoutT -= dt; if (this.shoutT <= 0) { this.shout(); this.shoutT = rnd(3, 8); } }
+    if (W.wind > 15) { this.flapT -= dt * (W.wind / 20); if (this.flapT <= 0) { this.burst(t, 0.35, 'bandpass', 260, 0.08 * wind, 1.5); this.flapT = rnd(1.5, 4); } }
+  },
+};
+
+/* ============================================================================
+   15. UI CONTROLLER
+   ============================================================================ */
+const $ = (id) => document.getElementById(id);
+let toastT = 0;
+function toast(m) { const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 3200); }
+const fmt = { kn: (ms) => `${(ms * 1.944).toFixed(0)} kn`, deg: (a) => `${String(Math.round(((a / DEG) % 360 + 360) % 360)).padStart(3, '0')}°` };
+const TOD_LABEL = (v) => v < 0.16 ? 'Morning' : v < 0.5 ? 'Midday' : v < 0.83 ? 'Sunset' : 'Night';
+const UI = {
+  showLabels: false, debug: false,
+  init() {
+    const range = (id, fn, out) => { const el = $(id); const upd = () => { const v = +el.value; fn(v); if (out) $(out[0]).textContent = out[1](v); }; el.addEventListener('input', upd); upd(); return el; };
+    range('transition', (v) => { SIM.transition = v; }, ['oTransition', (v) => `${v} s`]);
+    range('tod', (v) => { SIM.tod = v / 100; }, ['oTod', (v) => TOD_LABEL(v / 100)]);
+    this.oceanSliders = {
+      waveHeight: ['oWaveHeight', (v) => `${v.toFixed(1)} m`], waveSpeed: ['oWaveSpeed', (v) => `${v.toFixed(2)}×`], steepness: ['oSteepness', (v) => `${Math.round(v * 100)}%`],
+      windStrength: ['oWindStrength', (v) => `${Math.round(v * 1.944)} kn`], windDir: ['oWindDir', (v) => `${String(Math.round(v)).padStart(3, '0')}°`],
+    };
+    const map = { waveHeight: 'waveHeight', waveSpeed: 'waveSpeed', steepness: 'steepness', windStrength: 'wind', windDir: 'windDir' };
+    for (const [id, out] of Object.entries(this.oceanSliders)) { const el = $(id); el.addEventListener('input', () => { WEATHER.setParam(map[id], +el.value); $(out[0]).textContent = out[1](+el.value); }); $(out[0]).textContent = out[1](+el.value); }
+    range('motion', (v) => { SIM.motion = v; }, ['oMotion', (v) => `${Math.round(v * 100)}%`]);
+    range('speed', (v) => { SIM.maxSpeed = v; }, ['oSpeed', (v) => `${v.toFixed(1)} kn`]);
+    range('sail', (v) => { SIM.sailDeploy = v / 100; if (SIM.autoSail && this.ready) { SIM.autoSail = false; $('autoSail').checked = false; toast('Auto sail is off: the crew will set the sails to your deployment.'); } }, ['oSail', (v) => `${v}%`]);
+    range('heading', (v) => { SIM.heading = v * DEG; }, ['oHeading', (v) => `${String(v).padStart(3, '0')}°`]);
+    range('animSpeed', (v) => { SIM.animSpeed = v; }, ['oAnim', (v) => `${v.toFixed(2)}×`]);
+    range('volume', (v) => { AUDIO.vol = v / 100; }, ['oVol', (v) => `${v}%`]);
+    $('autoSail').addEventListener('change', (e) => { SIM.autoSail = e.target.checked; });
+    $('resetShip').addEventListener('click', () => { PHYS.reset(); SIM.heading = 45 * DEG; $('heading').value = 45; $('oHeading').textContent = '045°'; CAM.last.copy(new THREE.Vector3(PHYS.x, PHYS.y, PHYS.z)); PHYS.update(0.001, physInput()); CAM.go('overview', true); toast('The ship is back at the start position.'); });
+    $('wxGroup').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; this.setWx(b.dataset.v); WEATHER.set(b.dataset.v); });
+    this.radioKeys('wxGroup');
+    $('actSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; SIM.activity = b.dataset.v; this.seg('actSeg', b.dataset.v); $('bCrew').textContent = b.textContent; });
+    this.radioKeys('actSeg');
+    $('labelsT').addEventListener('change', (e) => { this.showLabels = e.target.checked; });
+    $('debugT').addEventListener('change', (e) => { this.debug = e.target.checked; });
+    $('followCap').addEventListener('click', () => { CAM.focusCrew(CREW.captain); this.select(CREW.captain); });
+    $('drill').addEventListener('click', () => { SIM.drill = 40; toast('Emergency drill: crew to storm stations for 40 seconds.'); this.cmdNote(); });
+    const cmd = (c, msg) => { SIM.command = c; toast(msg); this.cmdNote(); };
+    $('cmdPrepare').addEventListener('click', () => cmd('prepare', 'Captain: "Prepare for heavy weather! Lash everything down."'));
+    $('cmdSecure').addEventListener('click', () => { cmd('secure', 'Captain: "Secure the sails!" The sail handlers are reefing.'); });
+    $('cmdStations').addEventListener('click', () => cmd('stations', 'Captain: "All hands to your stations."'));
+    $('cmdResume').addEventListener('click', () => { SIM.command = null; SIM.drill = 0; toast(SIM.crewAlert >= 2 ? 'Orders cleared. The crew still works to the weather.' : 'Captain: "Resume normal duties."'); this.cmdNote(); });
+    document.querySelectorAll('[data-cam]').forEach((b) => b.addEventListener('click', () => CAM.go(b.dataset.cam)));
+    $('cineExit').addEventListener('click', () => CAM.stopCine());
+    $('pause').addEventListener('click', () => this.setPaused(!SIM.paused));
+    $('slowmo').addEventListener('click', () => { SIM.slow = !SIM.slow; $('slowmo').setAttribute('aria-pressed', String(SIM.slow)); this.simBadge(); });
+    $('resetSim').addEventListener('click', resetSimulation);
+    $('quality').value = quality; $('quality').addEventListener('change', (e) => setQuality(e.target.value));
+    $('mute').addEventListener('click', () => { AUDIO.start(); AUDIO.on = !AUDIO.on; $('mute').setAttribute('aria-pressed', String(!AUDIO.on)); $('mute').textContent = AUDIO.on ? 'Sound on' : 'Sound off'; });
+    $('ccClose').addEventListener('click', () => this.select(null));
+    $('ccFocus').addEventListener('click', () => { if (CREW.selected) CAM.focusCrew(CREW.selected); });
+    $('panelToggle').addEventListener('click', () => { const p = $('panel'), c = !p.classList.contains('collapsed'); p.classList.toggle('collapsed', c); $('panelToggle').textContent = c ? 'Show' : 'Hide'; $('panelToggle').setAttribute('aria-expanded', String(!c)); });
+    document.querySelectorAll('.ghead').forEach((h) => h.addEventListener('click', () => { const o = h.getAttribute('aria-expanded') !== 'true'; h.setAttribute('aria-expanded', String(o)); $(h.getAttribute('aria-controls')).hidden = !o; }));
+    if (IS_MOBILE) { $('panel').classList.add('collapsed'); $('panelToggle').textContent = 'Show'; }
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { if (CAM.cine) CAM.stopCine(); else this.select(null); }
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+      if (e.key === ' ') { e.preventDefault(); this.setPaused(!SIM.paused); }
+      const n = '12345'.indexOf(e.key); if (n >= 0) { const w = ['clear', 'cloudy', 'rain', 'storm', 'extreme'][n]; this.setWx(w); WEATHER.set(w); }
+    });
+    this.ready = true;
+  },
+  radioKeys(id) { const el = $(id); el.addEventListener('keydown', (e) => { if (!['ArrowLeft', 'ArrowRight'].includes(e.key)) return; const bs = [...el.querySelectorAll('button')], i = bs.indexOf(document.activeElement); if (i < 0) return; e.preventDefault(); const nb = bs[(i + (e.key === 'ArrowRight' ? 1 : -1) + bs.length) % bs.length]; nb.focus(); nb.click(); }); },
+  seg(id, v) { document.querySelectorAll(`#${id} button`).forEach((b) => b.setAttribute('aria-checked', String(b.dataset.v === v))); },
+  setWx(v) { this.seg('wxGroup', v); $('bWx').textContent = CONFIG.weather[v].label; },
+  syncFromWeather() {
+    const t = WEATHER.target, set = (id, v) => { $(id).value = v; const o = this.oceanSliders[id]; $(o[0]).textContent = o[1](+v); };
+    set('waveHeight', t.waveHeight); set('waveSpeed', t.waveSpeed); set('steepness', t.steepness); set('windStrength', t.wind);
+  },
+  cmdNote() {
+    const m = { prepare: 'Standing order: prepare for storm. Gear is being lashed and lines manned.', secure: 'Standing order: secure sails. Handlers are reefing to storm canvas.', stations: 'Standing order: all hands at their stations.' };
+    $('cmdNote').textContent = (SIM.drill > 0 ? 'Emergency drill in progress. ' : '') + (m[SIM.command] || (SIM.drill > 0 ? '' : 'No standing orders. The crew follows the weather.'));
+  },
+  setPaused(p) { SIM.paused = p; $('pause').setAttribute('aria-pressed', String(p)); $('pause').textContent = p ? 'Resume' : 'Pause'; this.simBadge(); },
+  simBadge() { $('bSim').textContent = SIM.paused ? 'Paused' : SIM.slow ? 'Slow motion' : 'Running'; },
+  camBadge(n) { $('bCam').textContent = n[0].toUpperCase() + n.slice(1); },
+  select(c) {
+    if (CREW.selected) CREW.selected.ring.visible = false;
+    CREW.selected = c;
+    $('crewCard').hidden = !c;
+    if (c) { c.ring.visible = true; this.cardTick(); }
+  },
+  cardTick() { const c = CREW.selected; if (!c) return; $('ccRole').textContent = c.title; $('ccName').textContent = `${c.name} — ${c.activity()}`; $('ccState').textContent = `State: ${c.displayState()}`; },
+  readout() {
+    const W = WEATHER.cur;
+    $('rWeather').textContent = CONFIG.weather[SIM.weather].label + (Math.abs(W.level - CONFIG.weather[SIM.weather].level) > 0.15 ? ' (changing)' : '');
+    $('rWind').textContent = `${fmt.kn(W.wind)} from ${String(Math.round(((W.windDir % 360) + 360) % 360)).padStart(3, '0')}°`;
+    $('rWaves').textContent = `${(W.waveHeight).toFixed(1)} m`;
+    $('rSpeed').textContent = `${(PHYS.speed * 1.944).toFixed(1)} kn`;
+    $('rAttitude').textContent = `${Math.round(PHYS.roll / DEG)}° · ${Math.round(PHYS.pitch / DEG)}°`;
+    $('rHeading').textContent = fmt.deg(PHYS.yaw);
+    const st = SAILS.stateLabel(), sl = { FULLY_DEPLOYED: 'Fully deployed', PARTIALLY_REEFED: 'Partially reefed', MOSTLY_FURLED: 'Mostly furled' }[st];
+    $('rSails').textContent = sl + (['fore', 'main', 'mizzen'].some((m) => SAILS.needs(m)) ? ' · hauling' : '');
+    $('bShip').textContent = sl;
+    const n = CREW.counts(), A = CREW.effAlert();
+    const crewTxt = A >= 3 ? `Storm stations · ${n.ropes} on lines · ${n.inside} inside` : A >= 2 ? `Securing ship · ${n.ropes} on lines` : A === 1 ? 'Watchful' : 'Routine duties';
+    $('rCrew').textContent = crewTxt; $('rCrew').classList.toggle('alert', A >= 3);
+    this.cardTick();
+  },
+};
+
+/* ============================================================================
+   16. SIMULATION MANAGER — fixed-step physics, crew, effects, render loop
+   ============================================================================ */
+let SHIP, OCEAN, PHYS, SAILS, CREW, WEATHER, RAIN, SPRAY, LIGHTNING;
+function physInput() {
+  const W = WEATHER.cur;
+  return { headingTarget: SIM.heading, maxSpeed: SIM.maxSpeed, windLocal: SIM.windLocal, wind: W.wind, intensity: SIM.motion, sailPower: SAILS.power() };
+}
+function computeWind() {
+  const W = WEATHER.cur, from = W.windDir * DEG;
+  const bx = -Math.sin(from), bz = -Math.cos(from);
+  const yaw = PHYS.yaw, rx = Math.cos(yaw), rz = -Math.sin(yaw), fx = Math.sin(yaw), fz = Math.cos(yaw);
+  SIM.windLocal.x = bx * rx + bz * rz; SIM.windLocal.z = bx * fx + bz * fz; SIM.windLocal.worldX = bx; SIM.windLocal.worldZ = bz;
+}
+function sailTarget() {
+  if (SIM.command === 'secure') return 0.15;
+  return SIM.autoSail ? CONFIG.weather[SIM.weather].sail : SIM.sailDeploy;
+}
+let acc = 0, bowCool = 0, lastImpact = 0, hudT = 0, crewT = 0;
+const STEP = 1 / 60;
+function simulate(simDt, realDt) {
+  WEATHER.update(simDt);
+  const W = WEATHER.cur;
+  Object.assign(OCEAN.p, { height: W.waveHeight, speed: W.waveSpeed, steep: W.steepness, wind: W.wind, windFrom: W.windDir * DEG });
+  if (SIM.drill > 0) { SIM.drill -= simDt; if (SIM.drill <= 0) { SIM.drill = 0; UI.cmdNote(); } }
+  acc += simDt; let n = 0;
+  while (acc >= STEP && n < 8) { computeWind(); OCEAN.update(STEP); PHYS.update(STEP, physInput()); acc -= STEP; n++; }
+  if (n >= 8) acc = 0;
+  computeWind();
+  const t = sailTarget(); for (const m of ['fore', 'main', 'mizzen']) SAILS.target[m] = t;
+  SAILS.update(simDt, SIM.windLocal, W.wind);
+  // crew context from the actual ship motion
+  const ctx = SIM.crewCtx;
+  ctx.alert = CREW.effAlert(); ctx.weatherLevel = SIM.weatherLevel; ctx.severity = PHYS.severity; ctx.roll = PHYS.roll; ctx.pitch = PHYS.pitch; ctx.crew = CREW.crew;
+  ctx.impact = PHYS.impactCount !== lastImpact ? PHYS.impact : 0; lastImpact = PHYS.impactCount;
+  ctx.speedMul = CONFIG.activity[SIM.activity].speed * (ctx.alert >= 2 ? 1.12 : 1);
+  SIM.crewSpeed = CONFIG.activity[SIM.activity].speed;
+  CREW.update(simDt);
+  SAILS.work(simDt);
+  const wl = SIM.windLocal, wAng = Math.atan2(wl.x, wl.z);
+  for (const f of SHIP.flags) f.update(OCEAN.time, W.wind, f.pivot.parent === SHIP.gaff ? wAng - SHIP.gaff.rotation.y : wAng);
+  SHIP.wheel.rotation.z = angDiff(SIM.heading, PHYS.yaw) * 4 + Math.sin(OCEAN.time * 0.9) * 0.15 * clamp(PHYS.severity, 0, 1.5);
+  // spray: bow slams, steady bow wave and storm spindrift
+  bowCool -= simDt;
+  const storm = clamp((W.waveHeight - 1.5) / 5, 0, 1.3);
+  const bow = SHIP.group.localToWorld(new THREE.Vector3(0, -1.0, 23.5));
+  const fwd = new THREE.Vector3(Math.sin(PHYS.yaw), 0, Math.cos(PHYS.yaw)), right = new THREE.Vector3(Math.cos(PHYS.yaw), 0, -Math.sin(PHYS.yaw));
+  if (PHYS.bowClearance() < 1.2 && PHYS.vp < -0.03 && bowCool <= 0 && simDt > 0) {
+    bowCool = 1.2;
+    const cnt = Math.floor(20 + storm * 90);
+    for (let i = 0; i < cnt; i++) SPRAY.emit(bow.clone().add(new THREE.Vector3(rnd(-2, 2), rnd(-0.5, 1), rnd(-2, 2))), fwd.clone().multiplyScalar(PHYS.speed * 0.8 + rnd(0, 3)).addScaledVector(right, rnd(-6, 6)).add(new THREE.Vector3(wl.worldX * W.wind * 0.25, rnd(4, 10) * (0.6 + storm), wl.worldZ * W.wind * 0.25)), rnd(1.2, 3) * (0.6 + storm), rnd(1.2, 2.2));
+  }
+  const steady = (PHYS.speed * 0.8 + storm * 10) * simDt;
+  for (let k = 0; k < Math.floor(steady + rng()); k++) { const side = rng() < 0.5 ? -1 : 1; const p = SHIP.group.localToWorld(new THREE.Vector3(side * rnd(0.5, 2.5), -2.6, rnd(18, 23))); SPRAY.emit(p, right.clone().multiplyScalar(side * rnd(1, 3)).add(new THREE.Vector3(0, rnd(1, 3), 0)).addScaledVector(fwd, PHYS.speed * 0.5), rnd(0.6, 1.4), rnd(0.8, 1.4)); }
+  if (storm > 0.4) for (let k = 0; k < Math.floor(storm * 14 * simDt + rng()); k++) { const p = new THREE.Vector3(PHYS.x + rnd(-60, 60), 0, PHYS.z + rnd(-60, 60)); p.y = OCEAN.heightAt(p.x, p.z); if (p.y > W.waveHeight * 0.25) SPRAY.emit(p, new THREE.Vector3(wl.worldX * W.wind * 0.5, rnd(1, 3), wl.worldZ * W.wind * 0.5), rnd(1.5, 3.5), rnd(1.5, 2.5)); }
+  SPRAY.update(simDt);
+  LIGHTNING.update(simDt, W.lightning, SHIP.group.position);
+}
+function render(dt) {
+  const W = WEATHER.cur;
+  ENV.update(dt, W, SHIP.group.position);
+  CAM.update(dt);
+  sky.position.copy(camera.position);
+  sky.material.uniforms.uTime.value = OCEAN.time;
+  sky.material.uniforms.uWind.value.set(SIM.windLocal.worldX, SIM.windLocal.worldZ);
+  const ou = OCEAN.u;
+  ou.uCam.value.copy(camera.position); ou.uTime.value = OCEAN.time;
+  ou.uShipPos.value.copy(SHIP.group.position); ou.uShipDir.value.set(Math.sin(PHYS.yaw), Math.cos(PHYS.yaw)); ou.uShipSpeed.value = PHYS.speed;
+  ou.uWind.value.set(SIM.windLocal.worldX, SIM.windLocal.worldZ);
+  OCEAN.follow(SHIP.group.position.x, SHIP.group.position.z);
+  RAIN.mat.uniforms.uTime.value = OCEAN.time; RAIN.mat.uniforms.uCam.value.copy(camera.position);
+  RAIN.mat.uniforms.uWind.value.set(SIM.windLocal.worldX * W.wind * 0.55, SIM.windLocal.worldZ * W.wind * 0.55);
+  RAIN.mat.uniforms.uAlpha.value = 0.28 + W.rain * 0.3; RAIN.setCount(CONFIG.quality[quality].rain * W.rain);
+  SPRAY.mat.uniforms.uScale.value = window.innerHeight * renderer.getPixelRatio() * 0.5;
+  CREW.updateLabels(UI.showLabels, UI.debug);
+  hudT += dt; if (hudT > 0.2) { hudT = 0; UI.readout(); }
+  AUDIO.update(dt, W);
+  renderer.render(scene, camera);
+}
+let last = performance.now(), perfT = 0, perfN = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now;
+  const simDt = SIM.paused ? 0 : dt * SIM.animSpeed * (SIM.slow ? 0.3 : 1);
+  simulate(simDt, dt);
+  render(dt);
+  perfT += dt; perfN++;
+  if (perfT > 3) { const avg = perfT / perfN; perfT = 0; perfN = 0; if (avg > 0.034 && renderer.getPixelRatio() > 1) { renderer.setPixelRatio(Math.max(1, renderer.getPixelRatio() - 0.25)); resize(); } }
+}
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h;
+  // keep the ship clear of the panels: shift the projection centre into the open area
+  const panel = $('panel'), log = document.querySelector('.log');
+  if (w > 820) { const pw = panel.classList.contains('collapsed') ? 46 : panel.offsetWidth + 16; const lw = log.getBoundingClientRect().right * 0.55; camera.setViewOffset(w, h, (pw - lw) / 2, 0, w, h); }
+  else camera.clearViewOffset();
+  camera.updateProjectionMatrix();
+}
+function setQuality(q) {
+  quality = q; const Q = CONFIG.quality[q];
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, Q.dpr));
+  sun.shadow.mapSize.set(Q.shadow, Q.shadow); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+  OCEAN.build(Q); resize();
+  toast(`Graphics quality: ${q}.`);
+}
+function resetSimulation() {
+  CAM.stopCine();
+  SIM.command = null; SIM.drill = 0; SIM.paused = false; SIM.slow = false; SIM.animSpeed = 1; SIM.autoSail = true; SIM.motion = 1; SIM.maxSpeed = 7; SIM.heading = 45 * DEG; SIM.tod = 0.33;
+  for (const [id, v] of [['animSpeed', 1], ['motion', 1], ['speed', 7], ['heading', 45], ['sail', 100], ['tod', 33], ['windDir', 200]]) { $(id).value = v; $(id).dispatchEvent(new Event('input')); }
+  SIM.autoSail = true; $('autoSail').checked = true;
+  UI.setWx('clear'); WEATHER.target.windDir = 200; WEATHER.set('clear', true); WEATHER.cur.windDir = 200;
+  PHYS.reset(); CAM.last.set(PHYS.x, PHYS.y, PHYS.z);
+  for (const m of ['fore', 'main', 'mizzen']) SAILS.dep[m] = 1;
+  for (const eq of SHIP.equipment) { eq.secured = 0; eq.straps.visible = false; }
+  for (const d of Object.values(SHIP.doors)) { d.target = 0; d.open = 0; d.update(0); }
+  for (const c of CREW.crew) { c.x = c.def.start[0]; c.z = c.def.start[1]; c.hidden = false; c.interrupt = null; c.box.visible = false; c.plan = []; c.step = null; c.state = STATE.IDLE; }
+  CREW.situationKey = null;
+  UI.setPaused(false); $('slowmo').setAttribute('aria-pressed', 'false'); UI.simBadge(); UI.cmdNote(); UI.select(null);
+  PHYS.update(0.001, physInput()); CAM.go('overview', true);
+  toast('Simulation reset: clear weather, crew at routine duties.');
+}
+
+/* ---------- picking: click a sailor, double-click to focus ---------- */
+const ray = new THREE.Raycaster(), ndcV = new THREE.Vector2();
+let downXY = null;
+function pickAt(x, y, objects) { const r = canvas.getBoundingClientRect(); ndcV.set((x - r.left) / r.width * 2 - 1, -(y - r.top) / r.height * 2 + 1); ray.setFromCamera(ndcV, camera); return ray.intersectObjects(objects, true)[0]; }
+canvas.addEventListener('pointerdown', (e) => { downXY = [e.clientX, e.clientY]; if (CAM.cine) CAM.stopCine(); });
+canvas.addEventListener('pointerup', (e) => {
+  if (!downXY || Math.hypot(e.clientX - downXY[0], e.clientY - downXY[1]) > 5) return;
+  const hit = pickAt(e.clientX, e.clientY, CREW.crew.map((c) => c.root));
+  if (hit && hit.object.userData.crew) { UI.select(hit.object.userData.crew); }
+});
+canvas.addEventListener('dblclick', (e) => {
+  const hit = pickAt(e.clientX, e.clientY, [SHIP.group]);
+  if (hit) { if (hit.object.userData.crew) CAM.focusCrew(hit.object.userData.crew); else CAM.focusPoint(hit.point); UI.camBadge('focus'); }
+});
+window.addEventListener('resize', resize);
+
+function init() {
+  OCEAN = new OceanSystem();
+  SHIP = ShipBuilder.build();
+  // tweak barrel layout (lashed along the bulwark) after build
+  SAILS = new SailSystem(SHIP);
+  PHYS = new ShipPhysics(SHIP, OCEAN);
+  WEATHER = new WeatherSystem();
+  RAIN = new RainSystem(); SPRAY = new SprayParticles(); LIGHTNING = new Lightning();
+  CREW = new CrewManager(SHIP);
+  UI.init();
+  WEATHER.set('clear', true);
+  computeWind();
+  for (let i = 0; i < 90; i++) { OCEAN.update(STEP); PHYS.update(STEP, physInput()); }
+  SAILS.update(0.016, SIM.windLocal, WEATHER.cur.wind);
+  resize();
+  CAM.init();
+  ENV.update(0.016, WEATHER.cur, SHIP.group.position);
+  requestAnimationFrame(frame);
+  window.__oceanReady = true;
+  $('loading').classList.add('done'); setTimeout(() => $('loading').remove(), 900);
+  // automation hook for tests: advance the simulation without rendering
+  window.livingOcean = {
+    SIM, PHYS, CREW, SAILS, OCEAN, WEATHER, CAM, SHIP, STATE, camera, renderer,
+    advance(sec, step = 1 / 30) { for (let t = 0; t < sec; t += step) simulate(step * SIM.animSpeed, step); ENV.update(step, WEATHER.cur, SHIP.group.position); CAM.update(step); },
+    setWeather(w, instant) { UI.setWx(w); WEATHER.set(w, instant); },
+  };
+}
+try { init(); } catch (err) { console.error(err); document.getElementById('loadingNote').textContent = 'Something went wrong while building the scene: ' + err.message; }
+</script>
+
+</body>
+</html>
