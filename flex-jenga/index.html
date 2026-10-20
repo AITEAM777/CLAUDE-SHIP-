@@ -1,0 +1,1948 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+<title>Flex Jenga</title>
+<meta name="description" content="A physics-driven wooden block tower. Pull blocks out, stack them on top and keep the flexing tower standing.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: full-bleed studio canvas with the tower centred; an editorial column at left,
+     a floating instrument panel at right, game HUD floating at the top and bottom centre.
+     One committed light look: soft ivory studio, charcoal type, an amber accent for anything live. */
+  :root {
+    --ivory: #f5f2ec;
+    --ivory-2: #ebe6dd;
+    --ink: #24211d;
+    --ink-2: #5d574f;
+    --ink-3: #958d82;
+    --line: rgba(36, 33, 29, 0.1);
+    --line-2: rgba(36, 33, 29, 0.18);
+    --card: rgba(255, 253, 249, 0.86);
+    --chip: rgba(36, 33, 29, 0.05);
+    --chip-2: rgba(36, 33, 29, 0.09);
+    --amber: #c27f22;
+    --amber-soft: rgba(194, 127, 34, 0.14);
+    --wood: #c9a476;
+    --ok: #4f8a5b;
+    --warn: #c58a1e;
+    --bad: #b8462f;
+    --display: "Big Shoulders Display", "Oswald", "Arial Narrow", Impact, sans-serif;
+    --body: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+    --shadow: 0 28px 60px -32px rgba(40, 30, 18, 0.45), 0 2px 10px rgba(40, 30, 18, 0.06);
+    --ease: cubic-bezier(.2, .8, .2, 1);
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body { background: var(--ivory); color: var(--ink); font-family: var(--body); font-size: 12.5px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
+  button, input, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+  #backdrop { position: fixed; inset: 0; background: radial-gradient(110% 85% at 50% 42%, #fbf9f5 0%, var(--ivory) 55%, var(--ivory-2) 100%); }
+  #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+  #scene.hover-block { cursor: grab; }
+  #scene.dragging { cursor: grabbing; }
+
+  /* ---------- editorial column ---------- */
+  .plate { position: fixed; z-index: 3; left: max(30px, calc(env(safe-area-inset-left, 0px) + 22px)); top: calc(env(safe-area-inset-top, 0px) + 30px); width: min(300px, 24vw); pointer-events: none; }
+  .eyebrow { margin: 0; font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
+  .plate h1 { margin: 20px 0 0; font-family: var(--display); font-weight: 800; font-size: clamp(64px, 8.2vw, 132px); line-height: .82; letter-spacing: -.01em; text-transform: uppercase; }
+  .plate h1 span { display: block; }
+  .plate h1 .dot { color: var(--amber); }
+  .lede { margin: 22px 0 0; max-width: 30ch; font-size: 14px; line-height: 1.55; color: var(--ink-2); }
+  .howto { margin: 14px 0 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+  .keys { margin: 22px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 11.5px; color: var(--ink-2); }
+  .keys li { display: grid; grid-template-columns: 92px 1fr; gap: 8px; }
+  .keys b { font-family: var(--mono); font-weight: 500; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink); }
+
+  /* ---------- top HUD ---------- */
+  .hud { position: fixed; z-index: 4; top: calc(env(safe-area-inset-top, 0px) + 22px); left: 50%; transform: translateX(-50%); display: flex; gap: 6px; align-items: center; pointer-events: none; }
+  .chip { display: inline-flex; align-items: baseline; gap: 6px; padding: 7px 12px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); box-shadow: 0 6px 18px -12px rgba(40,30,18,.4); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); white-space: nowrap; }
+  .chip small { font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+  .chip strong { font-family: var(--mono); font-weight: 500; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .chip.mode strong { color: var(--amber); }
+
+  /* ---------- stability card ---------- */
+  .stability { position: fixed; z-index: 4; bottom: calc(env(safe-area-inset-bottom, 0px) + 24px); left: 50%; transform: translateX(-50%); width: 280px; padding: 11px 14px 12px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); pointer-events: none; }
+  .stability .top { display: flex; justify-content: space-between; align-items: baseline; }
+  .stability small { font-family: var(--mono); font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); }
+  .stability strong { font-size: 13px; font-weight: 600; }
+  .stab-bar { position: relative; margin-top: 8px; height: 6px; border-radius: 6px; background: linear-gradient(to right, var(--bad) 0%, #d77b2f 28%, var(--warn) 52%, var(--ok) 100%); opacity: .9; }
+  .stab-bar i { position: absolute; top: -4px; width: 3px; height: 14px; border-radius: 3px; background: var(--ink); left: 100%; transform: translateX(-50%); transition: left .25s linear; }
+  .stab-meta { margin-top: 7px; display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+  /* ---------- hover card, force meter, toasts ---------- */
+  .probe { position: fixed; z-index: 6; min-width: 196px; padding: 10px 12px; border-radius: 12px; background: rgba(36,33,29,.9); color: #f6f1e9; font-size: 11.5px; pointer-events: none; box-shadow: 0 12px 30px -14px rgba(0,0,0,.5); }
+  .probe h3 { margin: 0 0 6px; font-family: var(--mono); font-weight: 500; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: #cdbfae; }
+  .probe dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; }
+  .probe dt { color: #b9ad9e; }
+  .probe dd { margin: 0; text-align: right; font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .probe .note { margin: 7px 0 0; font-size: 10px; color: #a99c8c; }
+  .risk-low { color: #8fd19c; } .risk-mid { color: #f2c46b; } .risk-high { color: #ff8f73; }
+  .force { position: fixed; z-index: 6; width: 120px; pointer-events: none; transform: translate(18px, 14px); }
+  .force small { display: block; font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 4px; }
+  .force .bar { position: relative; height: 5px; border-radius: 5px; background: var(--chip-2); overflow: visible; }
+  .force .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; background: var(--amber); width: 0; }
+  .force .bar b { position: absolute; top: -3px; width: 2px; height: 11px; background: var(--bad); }
+  .toast { position: fixed; z-index: 7; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 74px); transform: translateX(-50%); padding: 8px 14px; border-radius: 10px; background: var(--ink); color: var(--ivory); font-size: 12.5px; font-weight: 500; opacity: 0; transition: opacity .25s var(--ease), transform .25s var(--ease); pointer-events: none; white-space: nowrap; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(4px); }
+  .toast.warn { background: var(--amber); color: #fff; }
+  .hint { position: fixed; z-index: 5; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 124px); transform: translateX(-50%); padding: 9px 16px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); font-size: 13px; font-weight: 500; box-shadow: var(--shadow); transition: opacity .6s var(--ease); pointer-events: none; }
+  .hint.gone { opacity: 0; }
+  .quake { position: fixed; z-index: 7; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 118px); transform: translateX(-50%); padding: 8px 16px; border-radius: 10px; background: var(--bad); color: #fff; font-family: var(--mono); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; pointer-events: none; }
+
+  /* ---------- control panel ---------- */
+  .panel { position: fixed; z-index: 5; right: max(20px, calc(env(safe-area-inset-right, 0px) + 14px)); top: calc(env(safe-area-inset-top, 0px) + 20px); bottom: calc(env(safe-area-inset-bottom, 0px) + 20px); width: 296px; display: flex; flex-direction: column; pointer-events: none; }
+  .card { pointer-events: auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--card); border: 1px solid rgba(255,255,255,.8); border-radius: 18px; box-shadow: var(--shadow); backdrop-filter: blur(16px) saturate(1.1); -webkit-backdrop-filter: blur(16px) saturate(1.1); scrollbar-width: thin; scrollbar-color: rgba(36,33,29,.2) transparent; }
+  details { border-top: 1px solid var(--line); }
+  details:first-of-type { border-top: 0; }
+  summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; padding: 13px 16px; font-family: var(--mono); font-weight: 500; font-size: 10.5px; letter-spacing: .15em; text-transform: uppercase; color: var(--ink-2); }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: ""; width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg) translateY(-2px); transition: transform .2s var(--ease); }
+  details[open] summary::after { transform: rotate(-135deg) translateY(-1px); }
+  summary span { color: var(--ink); font-family: var(--body); letter-spacing: 0; text-transform: none; font-size: 11.5px; margin-left: auto; margin-right: 10px; }
+  .sec { padding: 0 16px 14px; display: grid; gap: 9px; }
+  .grid-2, .grid-3, .grid-4 { display: grid; gap: 5px; }
+  .grid-2 { grid-template-columns: repeat(2, 1fr); } .grid-3 { grid-template-columns: repeat(3, 1fr); } .grid-4 { grid-template-columns: repeat(4, 1fr); }
+  .btn { min-height: 30px; padding: 5px 6px; border-radius: 9px; border: 1px solid transparent; background: var(--chip); font-size: 11.5px; font-weight: 500; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: background .15s var(--ease), color .15s var(--ease); }
+  .btn:hover { background: var(--chip-2); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn.on { background: var(--ink); color: var(--ivory); }
+  .btn.primary { background: var(--amber); color: #fff; }
+  .btn.primary:hover { background: #ad7019; }
+  .btn.ghost { background: transparent; border-color: var(--line-2); }
+  .lbl { margin: 2px 0 -3px; font-size: 11px; color: var(--ink-3); }
+  .slider { display: grid; gap: 3px; }
+  .slider-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 11.5px; color: var(--ink-2); }
+  .slider-top output { font-family: var(--mono); font-size: 10.5px; color: var(--ink); font-variant-numeric: tabular-nums; }
+  input[type="range"] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; margin: 0; background: transparent; cursor: pointer; }
+  input[type="range"]::-webkit-slider-runnable-track { height: 3px; border-radius: 3px; background: linear-gradient(to right, var(--ink) var(--p, 50%), rgba(36,33,29,.14) var(--p, 50%)); }
+  input[type="range"]::-moz-range-track { height: 3px; border-radius: 3px; background: rgba(36,33,29,.14); }
+  input[type="range"]::-moz-range-progress { height: 3px; border-radius: 3px; background: var(--ink); }
+  input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5.5px; border-radius: 50%; background: #fff; border: 1px solid rgba(36,33,29,.3); box-shadow: 0 1px 4px rgba(40,30,18,.2); }
+  input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 1px solid rgba(36,33,29,.3); }
+  .toggle { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 12px; color: var(--ink); cursor: pointer; }
+  .toggle input { appearance: none; -webkit-appearance: none; position: relative; width: 30px; height: 18px; border-radius: 18px; background: rgba(36,33,29,.18); cursor: pointer; transition: background .2s var(--ease); flex: none; }
+  .toggle input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: transform .2s var(--ease); }
+  .toggle input:checked { background: var(--amber); }
+  .toggle input:checked::after { transform: translateX(12px); }
+  .desc { margin: 0; font-size: 11px; color: var(--ink-3); }
+  .records { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; font-size: 11.5px; }
+  .records dt { color: var(--ink-2); }
+  .records dd { margin: 0; font-family: var(--mono); font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* ---------- result overlay ---------- */
+  .result { position: fixed; z-index: 9; inset: 0; display: grid; place-items: center; background: rgba(245,242,236,.55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+  .result-card { width: min(420px, calc(100vw - 32px)); padding: 26px 26px 22px; border-radius: 20px; background: #fffdf9; border: 1px solid var(--line); box-shadow: var(--shadow); }
+  .result-card h2 { margin: 6px 0 4px; font-family: var(--display); font-weight: 800; font-size: 54px; line-height: .9; text-transform: uppercase; letter-spacing: -.005em; }
+  .result-card .why { margin: 0 0 16px; color: var(--ink-2); font-size: 13px; }
+  .stats { margin: 0 0 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; }
+  .stats div { border-top: 1px solid var(--line); padding-top: 7px; }
+  .stats dt { font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+  .stats dd { margin: 2px 0 0; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stats .score dd { color: var(--amber); }
+  .replay-tag { position: fixed; z-index: 8; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 70px); transform: translateX(-50%); padding: 7px 14px; border-radius: 999px; background: var(--ink); color: var(--ivory); font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; pointer-events: none; }
+
+  .loader { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: var(--ivory); transition: opacity .6s var(--ease), visibility .6s; }
+  .loader.done { opacity: 0; visibility: hidden; pointer-events: none; }
+  .loader p { margin: 0; text-align: center; }
+  .loader .t { font-family: var(--display); font-weight: 800; font-size: 44px; text-transform: uppercase; }
+  .loader .n { margin-top: 8px; font-size: 12.5px; color: var(--ink-2); min-height: 1.4em; }
+  .error { position: fixed; inset: 0; z-index: 21; display: grid; place-items: center; padding: 24px; background: var(--ivory); }
+  .error-card { max-width: 440px; padding: 24px 26px; border-radius: 18px; background: #fffdf9; box-shadow: var(--shadow); }
+  .error-card h2 { margin: 6px 0 10px; font-family: var(--display); font-weight: 800; font-size: 34px; text-transform: uppercase; line-height: 1; }
+  .error-card p { margin: 0 0 8px; color: var(--ink-2); font-size: 13px; }
+
+  @media (max-width: 1180px) { .plate { width: 230px; } .plate h1 { font-size: 72px; } .keys { display: none; } }
+  @media (max-width: 860px) {
+    .plate { left: 16px; right: 16px; width: auto; top: calc(env(safe-area-inset-top, 0px) + 12px); }
+    .plate h1 { font-size: 46px; margin-top: 8px; } .plate h1 span { display: inline; }
+    .lede, .keys { display: none; }
+    .hud { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 50vh); }
+    .panel { left: 10px; right: 10px; width: auto; top: auto; max-height: 46%; }
+    .stability { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition-duration: .01ms !important; } }
+</style>
+</head>
+<body>
+
+<div id="backdrop"></div>
+<canvas id="scene" aria-label="3D wooden block tower. Drag a block to pull it out, right-drag to orbit, scroll to zoom." tabindex="0"></canvas>
+
+<header class="plate">
+  <p class="eyebrow">Interactive physics experience / 001</p>
+  <h1><span>Flex</span><span>Jenga<span class="dot">.</span></span></h1>
+  <p class="lede">A familiar tower. Unfamiliar physics. Pull, balance, and survive as every block bends under pressure.</p>
+  <p class="howto">Drag to extract. Place to build. Don't let it fall.</p>
+  <ul class="keys">
+    <li><b>Left drag</b><span>Pull or carry a block</span></li>
+    <li><b>Right drag</b><span>Orbit the camera</span></li>
+    <li><b>Wheel</b><span>Zoom</span></li>
+    <li><b>Space</b><span>Precision slow motion</span></li>
+    <li><b>Q / E</b><span>Turn a carried block</span></li>
+    <li><b>Esc</b><span>Let go of the block</span></li>
+  </ul>
+</header>
+
+<div class="hud" aria-live="polite">
+  <span class="chip mode"><small>Mode</small><strong id="hudMode">Flex</strong></span>
+  <span class="chip"><small>Turn</small><strong id="hudTurn">1</strong></span>
+  <span class="chip"><small>Score</small><strong id="hudScore">0</strong></span>
+  <span class="chip"><small>Height</small><strong id="hudHeight">18</strong></span>
+  <span class="chip"><small>Time</small><strong id="hudTime">0:00</strong></span>
+  <span class="chip" id="hudSpeedChip" hidden><small>Speed</small><strong id="hudSpeed">0.25×</strong></span>
+  <span class="chip" id="hudStrikesChip" hidden><small>Strikes</small><strong id="hudStrikes">0/3</strong></span>
+</div>
+
+<div class="stability" id="stability">
+  <div class="top"><small>Tower stability</small><strong id="stabState">Stable</strong></div>
+  <div class="stab-bar"><i id="stabMark"></i></div>
+  <div class="stab-meta"><span id="stabTilt">tilt 0.0°</span><span id="stabCom">CoM 0.0 mm</span><span id="stabMargin">margin 100%</span></div>
+</div>
+
+<div class="probe" id="probe" hidden>
+  <h3 id="probeTitle">Layer 4 · side block</h3>
+  <dl>
+    <dt>Load</dt><dd id="probeLoad">—</dd>
+    <dt>Resistance</dt><dd id="probeRes">—</dd>
+    <dt>Local stability</dt><dd id="probeStab">—</dd>
+    <dt>Extraction risk</dt><dd id="probeRisk">—</dd>
+  </dl>
+  <p class="note" id="probeNote">Estimates from live contact forces.</p>
+</div>
+<div class="force" id="force" hidden>
+  <small id="forceLabel">Pull force</small>
+  <div class="bar"><i id="forceFill"></i><b id="forceLimit" hidden></b></div>
+</div>
+<div class="toast" id="toast"></div>
+<div class="hint" id="hint">Click a block. Drag carefully. Rebuild the tower.</div>
+<div class="quake" id="quake" hidden>Tremor incoming</div>
+<div class="replay-tag" id="replayTag" hidden>Replay · 0.35×</div>
+
+<aside class="panel" aria-label="Game controls">
+  <div class="card" id="card">
+    <details open>
+      <summary>Game<span id="stateVal">Ready</span></summary>
+      <div class="sec">
+        <div class="grid-2">
+          <button class="btn primary" type="button" id="startBtn">Start game</button>
+          <button class="btn" type="button" id="restartBtn">Restart game</button>
+          <button class="btn" type="button" id="pauseBtn" aria-pressed="false">Pause</button>
+          <button class="btn" type="button" id="undoBtn" disabled>Undo last move</button>
+          <button class="btn" type="button" id="resetBtn">Reset tower</button>
+          <button class="btn" type="button" id="newChallengeBtn">New challenge</button>
+        </div>
+        <p class="lbl">Mode</p>
+        <div class="grid-3" role="group" aria-label="Game mode">
+          <button class="btn" type="button" data-mode="classic">Classic</button>
+          <button class="btn on" type="button" data-mode="flex">Flex</button>
+          <button class="btn" type="button" data-mode="extreme">Extreme flex</button>
+          <button class="btn" type="button" data-mode="quake">Earthquake</button>
+          <button class="btn" type="button" data-mode="precision" style="grid-column: span 2">Precision challenge</button>
+        </div>
+        <p class="desc" id="modeDesc">Moderately elastic blocks: they compress under load and spring back when released.</p>
+        <p class="lbl">Difficulty</p>
+        <div class="grid-4" role="group" aria-label="Difficulty">
+          <button class="btn" type="button" data-layers="12">Beginner</button>
+          <button class="btn on" type="button" data-layers="18">Standard</button>
+          <button class="btn" type="button" data-layers="24">Expert</button>
+          <button class="btn" type="button" data-layers="30">Extreme</button>
+        </div>
+        <label class="toggle">Assisted placement<input type="checkbox" id="assistToggle" checked></label>
+        <label class="toggle">Practice mode (allows undo)<input type="checkbox" id="practiceToggle"></label>
+      </div>
+    </details>
+    <details open>
+      <summary>Physics<span id="physVal">Flex wood</span></summary>
+      <div class="sec">
+        <div class="slider"><div class="slider-top"><label for="elastSlider">Elasticity</label><output id="elastOut">50%</output></div><input type="range" id="elastSlider" min="0" max="100" value="50"></div>
+        <div class="slider"><div class="slider-top"><label for="fricSlider">Friction</label><output id="fricOut">0.42</output></div><input type="range" id="fricSlider" min="15" max="80" value="42"></div>
+        <div class="slider"><div class="slider-top"><label for="gravSlider">Gravity</label><output id="gravOut">1.00 g</output></div><input type="range" id="gravSlider" min="40" max="160" value="100"></div>
+        <div class="slider"><div class="slider-top"><label for="pullSlider">Pull sensitivity</label><output id="pullOut">100%</output></div><input type="range" id="pullSlider" min="30" max="200" value="100"></div>
+        <div class="slider"><div class="slider-top"><label for="dampSlider">Damping</label><output id="dampOut">45%</output></div><input type="range" id="dampSlider" min="5" max="100" value="45"></div>
+        <label class="toggle">Stress vision<input type="checkbox" id="stressToggle"></label>
+        <label class="toggle">Show centre of mass<input type="checkbox" id="comToggle"></label>
+        <label class="toggle">Show stability indicator<input type="checkbox" id="stabToggle" checked></label>
+        <label class="toggle">Precision mode<input type="checkbox" id="precisionToggle"></label>
+        <div class="grid-3" role="group" aria-label="Precision speed">
+          <button class="btn" type="button" data-speed="1">1.0× Normal</button>
+          <button class="btn" type="button" data-speed="0.5">0.5× Careful</button>
+          <button class="btn on" type="button" data-speed="0.25">0.25× Precise</button>
+        </div>
+      </div>
+    </details>
+    <details>
+      <summary>Materials<span id="matVal">Flex wood</span></summary>
+      <div class="sec">
+        <div class="grid-2" role="group" aria-label="Block material">
+          <button class="btn" type="button" data-mat="classic">Classic wood</button>
+          <button class="btn on" type="button" data-mat="flex">Flex wood</button>
+          <button class="btn" type="button" data-mat="spring">Spring wood</button>
+          <button class="btn" type="button" data-mat="soft">Soft composite</button>
+        </div>
+        <p class="desc" id="matDesc">Moderate elasticity with slight compression and controlled recovery.</p>
+      </div>
+    </details>
+    <details>
+      <summary>Camera<span id="camVal">Free orbit</span></summary>
+      <div class="sec">
+        <div class="grid-3">
+          <button class="btn" type="button" data-cam="front">Front</button>
+          <button class="btn" type="button" data-cam="side">Side</button>
+          <button class="btn" type="button" data-cam="top">Top</button>
+          <button class="btn" type="button" data-cam="orbit">Free orbit</button>
+          <button class="btn" type="button" data-cam="reset" style="grid-column: span 2">Reset camera</button>
+        </div>
+        <label class="toggle">Camera orbit<input type="checkbox" id="orbitToggle" checked></label>
+      </div>
+    </details>
+    <details>
+      <summary>Challenges<span id="chalVal">Survival</span></summary>
+      <div class="sec">
+        <div class="grid-3" role="group" aria-label="Challenge">
+          <button class="btn on" type="button" data-chal="survival">Survival</button>
+          <button class="btn" type="button" data-chal="daily">Daily</button>
+          <button class="btn" type="button" data-chal="random">Randomized</button>
+        </div>
+        <p class="desc" id="chalDesc">Keep extracting and stacking until the tower falls.</p>
+        <div class="slider"><div class="slider-top"><label for="quakeSlider">Earthquake intensity</label><output id="quakeOut">50%</output></div><input type="range" id="quakeSlider" min="10" max="100" value="50"></div>
+        <div class="slider"><div class="slider-top"><label for="limitSlider">Precision force limit</label><output id="limitOut">45%</output></div><input type="range" id="limitSlider" min="20" max="90" value="45"></div>
+        <p class="lbl">Personal records</p>
+        <dl class="records" id="records"></dl>
+      </div>
+    </details>
+    <details>
+      <summary>Audio<span id="audioVal">On</span></summary>
+      <div class="sec">
+        <label class="toggle">Sound effects<input type="checkbox" id="soundToggle" checked></label>
+        <div class="slider"><div class="slider-top"><label for="volSlider">Volume</label><output id="volOut">70%</output></div><input type="range" id="volSlider" min="0" max="100" value="70"></div>
+      </div>
+    </details>
+  </div>
+</aside>
+
+<div class="result" id="result" hidden>
+  <div class="result-card" role="dialog" aria-labelledby="resultTitle">
+    <p class="eyebrow" id="resultEyebrow">Flex · Standard</p>
+    <h2 id="resultTitle">Tower collapsed</h2>
+    <p class="why" id="resultWhy">A block fell from the tower.</p>
+    <dl class="stats">
+      <div><dt>Blocks removed</dt><dd id="rsRemoved">0</dd></div>
+      <div><dt>Turns completed</dt><dd id="rsTurns">0</dd></div>
+      <div><dt>Survival time</dt><dd id="rsTime">0:00</dd></div>
+      <div><dt>Highest tower</dt><dd id="rsHeight">18 layers</dd></div>
+      <div><dt>Difficulty</dt><dd id="rsDiff">Standard</dd></div>
+      <div class="score"><dt>Final score</dt><dd id="rsScore">0</dd></div>
+    </dl>
+    <div class="grid-3">
+      <button class="btn" type="button" id="replayBtn">Replay</button>
+      <button class="btn" type="button" id="undoResultBtn" hidden>Undo</button>
+      <button class="btn primary" type="button" id="restartResultBtn">Restart</button>
+      <button class="btn ghost" type="button" id="closeResultBtn">Inspect</button>
+    </div>
+  </div>
+</div>
+
+<div class="loader" id="loader" role="status"><div><p class="t">Flex Jenga.</p><p class="n" id="loaderNote">Cutting and sanding 54 blocks</p></div></div>
+<div class="error" id="error" hidden><div class="error-card" role="alert"><p class="eyebrow">Interactive physics experience / 001</p><h2 id="errorTitle">The game couldn't start</h2><p id="errorText"></p></div></div>
+
+<script type="application/json" id="game-config">
+{
+  "units": "centimetres, grams, seconds",
+  "block": { "length": 7.5, "width": 2.5, "height": 1.5, "gap": 0.045, "heightJitter": 0.022, "lengthJitter": 0.03, "density": 0.62 },
+  "tower": { "layers": 18 },
+  "physics": { "dt": 0.0027777778, "solverIterations": 6, "contactFrequency": 200, "allowedError": 0.00005, "gravity": 981, "friction": 0.42, "restitution": 0.08, "linearDamping": 0.05, "angularDamping": 0.12 },
+  "drag": { "stiffness": 9.0, "maxForceBlocks": 30, "carryLift": 2.4, "snapRadius": 4.6 },
+  "camera": { "fov": 30, "azimuthDeg": 38, "elevationDeg": 22 },
+  "seed": 20261020
+}
+</script>
+<script type="importmap">{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+  "rapier": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.19.3/rapier.mjs"
+} }</script>
+<script>
+  window.addEventListener('error', function (e) {
+    if (window.__jengaReady) return;
+    var n = document.getElementById('loaderNote');
+    if (n) n.textContent = 'Could not start: ' + (e.message || 'a script failed to load') + '. Three.js and Rapier load from jsDelivr, so check the connection and reload.';
+  });
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+
+/* =====================================================================================
+   FLEX JENGA — units are centimetres, grams and seconds. +Y is up, the tower stands on
+   the display plinth whose top surface is y = 0. Layer k (0 at the bottom) runs its
+   blocks along world X when k is even and along world Z when k is odd.
+   ===================================================================================== */
+
+const CFG = JSON.parse(document.getElementById('game-config').textContent);
+const B = CFG.block;
+const $ = (id) => document.getElementById(id);
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const lerp = (a, b, t) => a + (b - a) * t;
+const smooth = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
+const damp = (a, b, k, dt) => lerp(a, b, 1 - Math.exp(-k * dt));
+const TAU = Math.PI * 2;
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+function showError(title, text) {
+  $('errorTitle').textContent = title;
+  $('errorText').textContent = text;
+  $('error').hidden = false;
+  $('loader').classList.add('done');
+}
+
+/* ---------- renderer and scene ---------- */
+const canvas = $('scene');
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
+} catch (err) {
+  showError("This browser can't draw the tower", 'WebGL is unavailable. Turn on hardware acceleration in the browser settings, or open the page in a current version of Chrome, Edge, Firefox or Safari.');
+  throw err;
+}
+const QUALITY = { pixelRatio: Math.min(window.devicePixelRatio || 1, 2) };
+renderer.setPixelRatio(QUALITY.pixelRatio);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.02;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.setClearColor(0x000000, 0);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(CFG.camera.fov, 1, 1, 600);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+
+const key = new THREE.DirectionalLight(0xfff3e4, 2.6);
+key.position.set(-38, 74, 46);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+Object.assign(key.shadow.camera, { left: -42, right: 42, top: 52, bottom: -30, near: 20, far: 200 });
+key.shadow.bias = -0.0005;
+key.shadow.normalBias = 0.03;
+key.shadow.radius = 3;
+scene.add(key, key.target);
+const fill = new THREE.DirectionalLight(0xe8eef8, 0.55);
+fill.position.set(50, 30, -30);
+scene.add(fill);
+scene.add(new THREE.HemisphereLight(0xfffaf2, 0xcdbfa9, 0.75));
+
+/* ---------- studio: plinth, floor shadow, soft contact shadow ---------- */
+const PLINTH = { r: 24, h: 2.6 };
+const studio = new THREE.Group();
+scene.add(studio);
+const plinthMat = new THREE.MeshStandardMaterial({ color: 0xece6dc, roughness: 0.88, metalness: 0, envMapIntensity: 0.4 });
+{
+  const pr = PLINTH.r, ph = PLINTH.h, rr = 0.6;
+  const pts = [new THREE.Vector2(0, -ph)];
+  pts.push(new THREE.Vector2(pr, -ph));
+  for (let i = 0; i <= 8; i++) { const a = (i / 8) * Math.PI / 2; pts.push(new THREE.Vector2(pr - rr + Math.cos(a) * rr, -rr + Math.sin(a) * rr)); }
+  pts.push(new THREE.Vector2(0, 0));
+  const g = new THREE.LatheGeometry(pts, 96);
+  const plinth = new THREE.Mesh(g, plinthMat);
+  plinth.receiveShadow = true;
+  plinth.castShadow = true;
+  studio.add(plinth);
+  studio.userData.plinth = plinth;
+}
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.ShadowMaterial({ color: 0x3a2d1e, opacity: 0.12 }));
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = -PLINTH.h - 0.01;
+floor.receiveShadow = true;
+scene.add(floor);
+{
+  const N = 256, cv = document.createElement('canvas');
+  cv.width = cv.height = N;
+  const ctx = cv.getContext('2d');
+  const g = ctx.createRadialGradient(N / 2, N / 2, N * 0.18, N / 2, N / 2, N / 2);
+  g.addColorStop(0, 'rgba(48,36,22,0.42)'); g.addColorStop(0.45, 'rgba(48,36,22,0.16)'); g.addColorStop(1, 'rgba(48,36,22,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, N, N);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+  const contact = new THREE.Mesh(new THREE.PlaneGeometry(PLINTH.r * 2.9, PLINTH.r * 2.9), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, toneMapped: false }));
+  contact.rotation.x = -Math.PI / 2;
+  contact.position.y = -PLINTH.h + 0.02;
+  contact.renderOrder = -1;
+  scene.add(contact);
+}
+
+/* ---------- block geometry: rounded-edge bar with length subdivisions for bending ---------- */
+function blockGeometry() {
+  const bs = 0.07, bt = 0.07, rc = 0.07;
+  const w = B.width - 2 * bs, h = B.height - 2 * bs;
+  const s = new THREE.Shape();
+  s.moveTo(-w / 2 + rc, -h / 2);
+  s.lineTo(w / 2 - rc, -h / 2); s.quadraticCurveTo(w / 2, -h / 2, w / 2, -h / 2 + rc);
+  s.lineTo(w / 2, h / 2 - rc); s.quadraticCurveTo(w / 2, h / 2, w / 2 - rc, h / 2);
+  s.lineTo(-w / 2 + rc, h / 2); s.quadraticCurveTo(-w / 2, h / 2, -w / 2, h / 2 - rc);
+  s.lineTo(-w / 2, -h / 2 + rc); s.quadraticCurveTo(-w / 2, -h / 2, -w / 2 + rc, -h / 2);
+  let g = new THREE.ExtrudeGeometry(s, { depth: B.length - 2 * bt, steps: 24, curveSegments: 3, bevelEnabled: true, bevelThickness: bt, bevelSize: bs, bevelSegments: 2 });
+  g.translate(0, 0, -(B.length - 2 * bt) / 2);
+  g.rotateY(Math.PI / 2);
+  g.deleteAttribute('uv');
+  g.deleteAttribute('normal');
+  g = mergeVertices(g, 1e-4);
+  g.computeVertexNormals();
+  return g;
+}
+
+/* ---------- procedural wood material (instanced) ---------- */
+const GLSL_NOISE = /* glsl */ `
+  float wn_hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+  float wn_noise(vec3 x) {
+    vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(wn_hash(i), wn_hash(i + vec3(1,0,0)), f.x), mix(wn_hash(i + vec3(0,1,0)), wn_hash(i + vec3(1,1,0)), f.x), f.y),
+               mix(mix(wn_hash(i + vec3(0,0,1)), wn_hash(i + vec3(1,0,1)), f.x), mix(wn_hash(i + vec3(0,1,1)), wn_hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+  }
+`;
+const WOOD_U = { uTime: { value: 0 }, uStress: { value: 0 }, uHalfLen: { value: B.length / 2 }, uHalfH: { value: B.height / 2 } };
+function woodMaterial() {
+  const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.62, metalness: 0, envMapIntensity: 0.55 });
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, WOOD_U);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', `#include <common>
+        attribute vec4 aDeform;   // compression, bend (cm), twist (rad), highlight
+        attribute vec4 aWood;     // seed, ring centre y, ring centre z, ring frequency
+        attribute vec3 aTint;
+        attribute vec4 aStressC;  // rgb, amount
+        uniform float uHalfLen;
+        varying vec3 vLocal;
+        varying vec4 vWood;
+        varying vec3 vTint;
+        varying vec4 vStressC;
+        varying float vHi;`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vLocal = position; vWood = aWood; vTint = aTint; vStressC = aStressC; vHi = aDeform.w;
+        transformed.y *= 1.0 - aDeform.x;
+        float u = transformed.x / uHalfLen;
+        transformed.y -= aDeform.y * (1.0 - u * u);
+        float tw = aDeform.z * u, ct = cos(tw), st = sin(tw);
+        transformed.yz = mat2(ct, st, -st, ct) * transformed.yz;`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+        uniform float uStress, uHalfLen, uHalfH;
+        varying vec3 vLocal;
+        varying vec4 vWood;
+        varying vec3 vTint;
+        varying vec4 vStressC;
+        varying float vHi;
+        ${GLSL_NOISE}`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        vec3 p = vLocal;
+        float seed = vWood.x;
+        float wob = wn_noise(vec3(p.x * 0.32 + seed * 7.0, p.y * 1.4, p.z * 1.4)) * 0.55 + wn_noise(vec3(p.x * 1.1, p.y * 4.0, p.z * 4.0) + seed) * 0.15;
+        float r = length(p.yz - vWood.yz) + wob + 0.12 * sin(p.x * 0.7 + seed * 9.0);
+        float ring = fract(r * vWood.w);
+        float late = smoothstep(0.52, 0.9, ring) * (1.0 - smoothstep(0.93, 1.0, ring));
+        float fiber = wn_noise(vec3(p.x * 0.55, p.y * 26.0, p.z * 26.0) + seed * 3.0);
+        float pore = step(0.86, wn_noise(vec3(p.x * 2.2, p.y * 34.0, p.z * 34.0) + seed * 5.0));
+        float endFace = smoothstep(uHalfLen - 0.12, uHalfLen - 0.02, abs(p.x));
+        vec3 wood = vTint;
+        vec3 darkw = vTint * vec3(0.8, 0.69, 0.55);
+        vec3 col = mix(wood, darkw, late * 0.62 + fiber * 0.1 + pore * 0.08);
+        col *= mix(1.0, 0.8 + 0.12 * fiber, endFace);
+        float crevice = smoothstep(uHalfH - 0.16, uHalfH - 0.01, abs(p.y)) * (1.0 - endFace);
+        col *= 1.0 - 0.14 * crevice;
+        col = mix(col, vStressC.rgb, vStressC.a * uStress * 0.62);
+        col += vec3(0.95, 0.62, 0.22) * vHi * 0.16;
+        diffuseColor.rgb = col;
+        float woodRough = 0.5 + 0.18 * late + 0.12 * fiber + 0.16 * endFace;`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        roughnessFactor = woodRough;`);
+  };
+  m.customProgramCacheKey = () => 'flex-wood';
+  return m;
+}
+
+/* ---------- camera fitting ---------- */
+function freeRect() {
+  const w = innerWidth, h = innerHeight;
+  const panel = document.querySelector('.panel').getBoundingClientRect();
+  if (w > 860) {
+    const plate = document.querySelector('.plate').getBoundingClientRect();
+    const left = plate.right * 0.55, right = panel.left - 10;
+    return { left, right, top: 60, bottom: h - 10, w: right - left, h: h - 70 };
+  }
+  const plate = document.querySelector('.plate').getBoundingClientRect();
+  return { left: 0, right: w, top: plate.bottom, bottom: Math.min(h, panel.top), w, h: Math.min(h, panel.top) - plate.bottom };
+}
+function applyViewOffset() {
+  const w = innerWidth, h = innerHeight, r = freeRect();
+  const dx = clamp((r.left + r.right) / 2 - w / 2, -w * 0.15, w * 0.15);
+  const dy = (r.top + r.bottom) / 2 - h / 2;
+  camera.setViewOffset(w, h, -dx, -dy, w, h);
+}
+
+/* =====================================================================================
+   PHYSICS: Rapier rigid bodies plus the FLEX WOOD compliant-contact model.
+   Each block is one rigid cuboid. Every step the contact forces it receives are read back
+   from the solver; a damped spring turns that load into compression, which shrinks the
+   collider (so the tower really settles and pushes back when the load is released),
+   raises friction (a pinched block grips harder) and drives the visual bend and twist.
+   ===================================================================================== */
+
+let R = null; // Rapier namespace, set at boot
+
+const MATERIALS = {
+  classic: { name: 'Classic wood', elast: 4, friction: 0.45, damping: 70, freq: 40, grip: 0.0, bend: 0.0, restitution: 0.06, desc: 'High stiffness and realistic friction. Practically no visible deformation.' },
+  flex: { name: 'Flex wood', elast: 50, friction: 0.42, damping: 45, freq: 12, grip: 0.35, bend: 0.03, restitution: 0.1, desc: 'Moderate elasticity with slight compression and controlled recovery.' },
+  spring: { name: 'Spring wood', elast: 72, friction: 0.4, damping: 14, freq: 9, grip: 0.3, bend: 0.035, restitution: 0.24, desc: 'Pronounced recoil and longer oscillation. Extractions kick back.' },
+  soft: { name: 'Soft composite', elast: 80, friction: 0.5, damping: 92, freq: 6, grip: 0.62, bend: 0.045, restitution: 0.03, desc: 'Compresses the most and settles slowly. Loaded blocks grip hard.' },
+};
+
+const PHYS = {
+  world: null, eq: null, dt: CFG.physics.dt, acc: 0, timeScale: 1, targetScale: 1, paused: false, simTime: 0,
+  blocks: [], byCollider: new Map(), plinthBody: null, plinthCollider: null, floorCollider: null,
+  params: { elasticity: 0.5, friction: CFG.physics.friction, gravity: 1, pull: 1, damping: 0.45, material: 'flex' },
+  plinthOffset: new THREE.Vector3(),
+  beforeStep: null, afterStep: null,
+  stepsRun: 0,
+  get mat() { return MATERIALS[this.params.material]; },
+  get cMax() { const s = this.params.elasticity; return 0.002 + 0.09 * s * s; },
+  get zeta() { return 0.05 + this.params.damping * 1.0; },
+};
+const _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _m4 = new THREE.Matrix4(), _s = new THREE.Vector3();
+const AX = new THREE.Vector3(1, 0, 0), AZ = new THREE.Vector3(0, 0, 1);
+
+function initWorld() {
+  const g = CFG.physics.gravity;
+  const world = new R.World({ x: 0, y: -g, z: 0 });
+  world.timestep = PHYS.dt;
+  world.lengthUnit = 100;                             // centimetres
+  // small blocks under real gravity need stiff contacts and a short step to stack 30 layers high
+  world.integrationParameters.normalizedAllowedLinearError = CFG.physics.allowedError; // 0.005 cm
+  world.integrationParameters.normalizedPredictionDistance = 0.002;
+  world.integrationParameters.contact_natural_frequency = CFG.physics.contactFrequency;
+  world.numSolverIterations = CFG.physics.solverIterations;
+  world.numInternalPgsIterations = 1;
+  PHYS.world = world;
+  PHYS.eq = new R.EventQueue(true);
+  // display plinth: kinematic so earthquakes can move it; a fixed floor below catches fallen blocks
+  const pb = world.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(0, -PLINTH.h / 2, 0));
+  PHYS.plinthCollider = world.createCollider(R.ColliderDesc.cylinder(PLINTH.h / 2, PLINTH.r).setFriction(0.55).setRestitution(0.05), pb);
+  PHYS.plinthBody = pb;
+  const fb = world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(0, -PLINTH.h - 2, 0));
+  PHYS.floorCollider = world.createCollider(R.ColliderDesc.cuboid(300, 2, 300).setFriction(0.6), fb);
+  applyGravity();
+}
+function applyGravity() { PHYS.world.gravity = { x: 0, y: -CFG.physics.gravity * PHYS.params.gravity, z: 0 }; }
+
+/* ---------- blocks ---------- */
+const TINTS = [[0.86, 0.71, 0.52], [0.89, 0.76, 0.58], [0.83, 0.68, 0.49], [0.9, 0.79, 0.62], [0.85, 0.73, 0.55], [0.8, 0.64, 0.45]];
+function makeBlockLook(r) {
+  const t = TINTS[Math.floor(r() * TINTS.length)], k = 0.95 + r() * 0.08;
+  const c = new THREE.Color().setRGB(t[0] * k, t[1] * k, t[2] * k, THREE.SRGBColorSpace);
+  return { seed: r() * 50, ringY: (r() - 0.5) * 6, ringZ: (r() < 0.5 ? -1 : 1) * (4 + r() * 9), ringF: 1.6 + r() * 1.4, tint: c };
+}
+function clearBlocks() {
+  for (const b of PHYS.blocks) PHYS.world.removeRigidBody(b.body);
+  PHYS.blocks.length = 0;
+  PHYS.byCollider.clear();
+}
+function createBlock(i, L, H, W, pos, yaw, density, look) {
+  const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+  const body = PHYS.world.createRigidBody(R.RigidBodyDesc.dynamic()
+    .setTranslation(pos.x, pos.y, pos.z).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w })
+    .setLinearDamping(CFG.physics.linearDamping).setAngularDamping(CFG.physics.angularDamping));
+  const cd = R.ColliderDesc.cuboid(L / 2, H / 2, W / 2).setDensity(density)
+    .setFriction(PHYS.params.friction).setRestitution(PHYS.mat.restitution)
+    .setActiveEvents(R.ActiveEvents.CONTACT_FORCE_EVENTS).setContactForceEventThreshold(0);
+  const collider = PHYS.world.createCollider(cd, body);
+  const b = {
+    i, L, H, W, body, collider, mass: L * H * W * density, look,
+    c: 0, cv: 0, bend: 0, twist: 0, halfH: H / 2, mu: PHYS.params.friction,
+    aF: 0, aFc: 0, aFsu: 0, bF: 0, bFc: 0, side: 0, load: 0, share: 0, stressT: 0,
+    state: 'tower', homeY: pos.y, layer0: 0, hover: 0, pos: new THREE.Vector3(), quat: new THREE.Quaternion(), axis: new THREE.Vector3(), awake: true,
+  };
+  PHYS.byCollider.set(collider.handle, b);
+  PHYS.blocks.push(b);
+  return b;
+}
+function buildTower(layers, seed, randomize = 0) {
+  clearBlocks();
+  const r = mulberry32(seed >>> 0);
+  let base = 0, i = 0;
+  for (let k = 0; k < layers; k++) {
+    const alongX = k % 2 === 0;
+    const hs = [0, 1, 2].map(() => B.height + (r() * 2 - 1) * B.heightJitter);
+    for (let j = 0; j < 3; j++) {
+      const L = B.length + (r() * 2 - 1) * B.lengthJitter, W = B.width + (r() * 2 - 1) * 0.01, H = hs[j];
+      const off = (j - 1) * (B.width + B.gap);
+      const along = randomize ? (r() * 2 - 1) * 0.45 * randomize : (r() * 2 - 1) * 0.04;
+      const lat = randomize ? (r() * 2 - 1) * 0.05 * randomize : 0;
+      const yaw = (alongX ? 0 : Math.PI / 2) + (randomize ? (r() * 2 - 1) * 0.04 * randomize : (r() * 2 - 1) * 0.004);
+      const pos = alongX ? new THREE.Vector3(along, base + H / 2, off + lat) : new THREE.Vector3(off + lat, base + H / 2, along);
+      const blk = createBlock(i++, L, H, W, pos, yaw, CFG.block.density * (0.95 + r() * 0.1), makeBlockLook(r));
+      blk.layer0 = k;
+    }
+    base += Math.max(...hs);
+  }
+  PHYS.simTime = 0;
+  syncBlocks();
+}
+function settle(seconds) {
+  const n = Math.round(seconds / PHYS.dt);
+  for (let s = 0; s < n; s++) step(PHYS.dt, true);
+  for (const b of PHYS.blocks) b.homeY = b.pos.y;
+}
+
+/* ---------- reading state back ---------- */
+function syncBlocks() {
+  for (const b of PHYS.blocks) {
+    const t = b.body.translation(), r = b.body.rotation();
+    b.pos.set(t.x, t.y, t.z);
+    b.quat.set(r.x, r.y, r.z, r.w);
+    b.axis.copy(AX).applyQuaternion(b.quat);
+    b.awake = !b.body.isSleeping();
+  }
+}
+
+/* ---------- FLEX WOOD: loads -> compression, grip, bend, twist ---------- */
+function gatherLoads() {
+  for (const b of PHYS.blocks) if (b.awake) { b.aF = b.aFc = b.aFsu = b.bF = b.bFc = b.side = 0; }
+  PHYS.eq.drainContactForceEvents((e) => {
+    const a = PHYS.byCollider.get(e.collider1()), c = PHYS.byCollider.get(e.collider2());
+    const F = e.totalForce();
+    const fy = Math.abs(F.y), fh = Math.hypot(F.x, F.z);
+    if (a && c) {
+      const dy = a.pos.y - c.pos.y;
+      if (Math.abs(dy) < B.height * 0.45) { a.side += fh; c.side += fh; return; }
+      const up = dy > 0 ? a : c, lo = dy > 0 ? c : a;
+      _v.subVectors(up.pos, lo.pos);
+      const hl = lo.L / 2, s = clamp(_v.dot(lo.axis) / hl, -1, 1);
+      _v2.set(-lo.axis.z, 0, lo.axis.x);
+      const u = clamp(_v.dot(_v2) / (lo.W / 2), -1, 1);
+      lo.aF += fy; lo.aFc += fy * (1 - s * s); lo.aFsu += fy * s * u;
+      _v.subVectors(lo.pos, up.pos);
+      const s2 = clamp(_v.dot(up.axis) / (up.L / 2), -1, 1);
+      up.bF += fy; up.bFc += fy * (1 - Math.abs(s2));
+    } else {
+      const blk = a || c;
+      if (!blk) return;
+      blk.bF += fy; blk.bFc += fy * 0.6;
+    }
+  });
+}
+function updateDeformation(dt) {
+  const g = CFG.physics.gravity * PHYS.params.gravity, mat = PHYS.mat, cMax = PHYS.cMax * (mat.grip === 0 ? 0.15 : 1);
+  const om = TAU * mat.freq, zeta = PHYS.zeta;
+  for (const b of PHYS.blocks) {
+    if (!b.awake) continue;
+    const w = b.mass * g;
+    const p = (b.aF + b.bF) / (2 * w);
+    b.load = damp(b.load, p, 30, dt);
+    const ct = cMax * (1 - Math.exp(-p * 0.045));
+    b.cv += (om * om * (ct - b.c) - 2 * zeta * om * b.cv) * dt;
+    b.c = clamp(b.c + b.cv * dt, -0.25 * cMax, cMax * 1.15);
+    // bending: load carried near the middle while the supports sit near the ends
+    const centreSupport = b.bF > 1e-3 ? b.bFc / b.bF : 1;
+    const bt = clamp(mat.bend * cMax * (b.aFc / w) * (1 - 0.75 * clamp(centreSupport * 1.6, 0, 1)), 0, cMax * 3.2);
+    b.bend = damp(b.bend, bt, 18, dt);
+    b.twist = damp(b.twist, clamp((b.aFsu / w) * cMax * 0.06, -0.02, 0.02), 10, dt);
+    // collider follows the compression, so contacts really move
+    const half = (b.H / 2) * (1 - b.c);
+    if (!PHYS.noResize && Math.abs(half - b.halfH) > 2e-5) { b.collider.setHalfExtents({ x: b.L / 2, y: half, z: b.W / 2 }); b.halfH = half; }
+    const mu = PHYS.params.friction * (1 + mat.grip * clamp(b.c / Math.max(cMax, 1e-4), 0, 1.4));
+    if (!PHYS.noResize && Math.abs(mu - b.mu) > 0.004) { b.collider.setFriction(mu); b.mu = mu; }
+  }
+}
+
+/* ---------- earthquake: the plinth itself shakes ---------- */
+const QUAKE = { on: false, intensity: 0.5, next: 16, warnAt: 0, t: -1, dur: 1.5, fx: 8.5, fz: 6.2, phase: 0, rng: mulberry32(77) };
+function scheduleQuake(now) { QUAKE.next = now + lerp(22, 11, QUAKE.intensity) + QUAKE.rng() * 8; QUAKE.fx = 7 + QUAKE.rng() * 4; QUAKE.fz = 5 + QUAKE.rng() * 4; QUAKE.phase = QUAKE.rng() * TAU; }
+function quakeOffset(t) {
+  if (QUAKE.t < 0) return null;
+  const k = QUAKE.t / QUAKE.dur;
+  if (k >= 1) return null;
+  const env = Math.sin(Math.PI * k) ** 1.5;
+  const A = (0.03 + 0.17 * QUAKE.intensity) * env;
+  return { x: A * Math.sin(TAU * QUAKE.fx * QUAKE.t + QUAKE.phase), z: A * 0.65 * Math.sin(TAU * QUAKE.fz * QUAKE.t) };
+}
+
+/* ---------- the fixed step ---------- */
+function step(dt, settling = false) {
+  const w = PHYS.world;
+  if (!settling && PHYS.beforeStep) PHYS.beforeStep(dt);
+  // plinth motion
+  let off = null;
+  if (QUAKE.t >= 0) { QUAKE.t += dt; off = quakeOffset(); if (!off) QUAKE.t = -1; }
+  const ox = off ? off.x : 0, oz = off ? off.z : 0;
+  PHYS.plinthBody.setNextKinematicTranslation({ x: ox, y: -PLINTH.h / 2, z: oz });
+  PHYS.plinthOffset.set(ox, 0, oz);
+  if (off) for (const b of PHYS.blocks) if (b.body.isSleeping() && b.pos.y < 6) b.body.wakeUp();
+  w.step(PHYS.eq);
+  PHYS.simTime += dt;
+  PHYS.stepsRun++;
+  syncBlocks();
+  gatherLoads();
+  updateDeformation(dt);
+  if (!settling && PHYS.afterStep) PHYS.afterStep(dt);
+}
+
+/* ---------- snapshots for undo ---------- */
+function snapshot() {
+  return PHYS.blocks.map((b) => ({ p: b.pos.clone(), q: b.quat.clone(), c: b.c, state: b.state, homeY: b.homeY, layer0: b.layer0 }));
+}
+function restore(snap) {
+  snap.forEach((s, i) => {
+    const b = PHYS.blocks[i];
+    b.body.setTranslation(s.p, true); b.body.setRotation(s.q, true);
+    b.body.setLinvel({ x: 0, y: 0, z: 0 }, true); b.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    b.c = s.c; b.cv = 0; b.state = s.state; b.homeY = s.homeY; b.layer0 = s.layer0;
+  });
+  syncBlocks();
+}
+
+/* ---------- replay recording: compact transform snapshots ---------- */
+const REC = {
+  fps: 60, seconds: 7, frames: 0, head: 0, count: 0, data: null, stride: 9, n: 0, acc: 0, stopAt: -1, frozen: false,
+  reset(n) { this.n = n; this.frames = this.fps * this.seconds; this.data = new Float32Array(this.frames * n * this.stride); this.head = 0; this.count = 0; this.acc = 0; this.stopAt = -1; this.frozen = false; },
+  record(dt) {
+    if (this.frozen) return;
+    this.acc += dt;
+    if (this.acc < 1 / this.fps) return;
+    this.acc -= 1 / this.fps;
+    const base = this.head * this.n * this.stride, d = this.data;
+    PHYS.blocks.forEach((b, i) => {
+      const k = base + i * this.stride;
+      d[k] = b.pos.x; d[k + 1] = b.pos.y; d[k + 2] = b.pos.z;
+      d[k + 3] = b.quat.x; d[k + 4] = b.quat.y; d[k + 5] = b.quat.z; d[k + 6] = b.quat.w;
+      d[k + 7] = b.c; d[k + 8] = b.bend;
+    });
+    this.head = (this.head + 1) % this.frames;
+    this.count = Math.min(this.frames, this.count + 1);
+    if (this.stopAt > 0 && PHYS.simTime >= this.stopAt) this.frozen = true;
+  },
+  frame(f, out) { // f in [0, count-1], oldest first
+    const idx = (this.head - this.count + Math.floor(f) + this.frames * 2) % this.frames;
+    return idx * this.n * this.stride;
+  },
+};
+
+/* =====================================================================================
+   GAME: rendering sync, hover probe, spring-damper grab, extraction, carry and placement,
+   Jenga rules, scoring, stability analysis, collapse detection
+   ===================================================================================== */
+
+const MODES = {
+  classic: { name: 'Classic', mat: 'classic', mult: 1.0, desc: 'Traditional Jenga: stiff wooden blocks, realistic friction, no disturbances.' },
+  flex: { name: 'Flex', mat: 'flex', mult: 1.3, desc: 'Moderately elastic blocks: they compress under load and spring back when released.' },
+  extreme: { name: 'Extreme flex', mat: 'spring', mult: 1.6, elast: 78, desc: 'Highly compliant blocks with strong but bounded recoil. Every pull rocks the tower.' },
+  quake: { name: 'Earthquake', mat: 'flex', mult: 1.5, desc: 'The plinth shakes every so often. A warning appears two seconds before each tremor.' },
+  precision: { name: 'Precision', mat: 'flex', mult: 1.4, desc: 'Extract without exceeding the force limit. Three strikes and the run ends.' },
+};
+const DIFF = { 12: 'Beginner', 18: 'Standard', 24: 'Expert', 30: 'Extreme' };
+
+const GAME = {
+  state: 'ready', mode: 'flex', layers: CFG.tower.layers, challenge: 'survival', seed: CFG.seed, practice: false, assisted: true,
+  turn: 1, removed: 0, turnsDone: 0, score: 0, time: 0, maxLayers: CFG.tower.layers, strikes: 0, slowUsed: false, slowUsedTurn: false,
+  active: null, phase: 'idle', history: [], overReason: '', overAt: 0, settleT: 0, dropT: 0, extractStartT: 0, peakTension: 0, overTension: 0,
+  lastLayerOfActive: 0, firstGrab: false,
+};
+
+/* ---------- rendering ---------- */
+let blockMesh = null;
+const ATTR = {};
+const STRESS_COLS = [[0.23, 0.49, 0.85], [0.25, 0.68, 0.42], [0.9, 0.76, 0.23], [0.9, 0.53, 0.17], [0.84, 0.26, 0.2]].map((c) => new THREE.Color().setRGB(c[0], c[1], c[2], THREE.SRGBColorSpace));
+function buildBlockMesh() {
+  if (blockMesh) { scene.remove(blockMesh); blockMesh.geometry.dispose(); }
+  const n = PHYS.blocks.length;
+  const geo = blockGeometry();
+  const mk = (name, size, usage = THREE.StaticDrawUsage) => { const a = new THREE.InstancedBufferAttribute(new Float32Array(n * size), size); a.setUsage(usage); geo.setAttribute(name, a); ATTR[name] = a; return a; };
+  mk('aDeform', 4, THREE.DynamicDrawUsage); mk('aStressC', 4, THREE.DynamicDrawUsage); mk('aWood', 4); mk('aTint', 3);
+  PHYS.blocks.forEach((b, i) => {
+    ATTR.aWood.setXYZW(i, b.look.seed, b.look.ringY, b.look.ringZ, b.look.ringF);
+    ATTR.aTint.setXYZ(i, b.look.tint.r, b.look.tint.g, b.look.tint.b);
+  });
+  blockMesh = new THREE.InstancedMesh(geo, woodMat, n);
+  blockMesh.castShadow = true; blockMesh.receiveShadow = true; blockMesh.frustumCulled = false;
+  scene.add(blockMesh);
+}
+const woodMat = woodMaterial();
+const _tmpC = new THREE.Color();
+function stressColor(ratio, out) {
+  const t = clamp(ratio / 0.55, 0, 4), i = Math.min(3, Math.floor(t));
+  return out.copy(STRESS_COLS[i]).lerp(STRESS_COLS[i + 1], t - i);
+}
+function renderBlocks(replayFrame = -1) {
+  const d = REC.data;
+  PHYS.blocks.forEach((b, i) => {
+    let px = b.pos.x, py = b.pos.y, pz = b.pos.z, c = b.c, bend = b.bend;
+    if (replayFrame >= 0) {
+      const f0 = Math.floor(replayFrame), f1 = Math.min(REC.count - 1, f0 + 1), t = replayFrame - f0;
+      const k0 = REC.frame(f0) + i * REC.stride, k1 = REC.frame(f1) + i * REC.stride;
+      px = lerp(d[k0], d[k1], t); py = lerp(d[k0 + 1], d[k1 + 1], t); pz = lerp(d[k0 + 2], d[k1 + 2], t);
+      _q.set(d[k0 + 3], d[k0 + 4], d[k0 + 5], d[k0 + 6]).slerp(new THREE.Quaternion(d[k1 + 3], d[k1 + 4], d[k1 + 5], d[k1 + 6]), t);
+      c = d[k0 + 7]; bend = d[k0 + 8];
+    } else _q.copy(b.quat);
+    _m4.compose(_v.set(px, py, pz), _q, _s.set(b.L / B.length, b.H / B.height, b.W / B.width));
+    blockMesh.setMatrixAt(i, _m4);
+    ATTR.aDeform.setXYZW(i, c, bend, b.twist, b.hover);
+    stressColor(b.share, _tmpC);
+    ATTR.aStressC.setXYZW(i, _tmpC.r, _tmpC.g, _tmpC.b, b.state === 'tower' ? 1 : 0.25);
+  });
+  blockMesh.instanceMatrix.needsUpdate = true;
+  ATTR.aDeform.needsUpdate = true;
+  ATTR.aStressC.needsUpdate = true;
+}
+
+/* ---------- tower structure analysis ---------- */
+const STRUCT = { layers: [], top: -1, topCount: 0, completeTop: -1, com: new THREE.Vector3(), margin: 1, tilt: 0, motion: 0, stability: 1, comOffset: 0, base: null };
+const layerOf = (b) => (b.state === 'tower' && b.k !== undefined ? b.k : Math.max(0, Math.round((b.pos.y - B.height / 2) / B.height)));
+function analyse() {
+  const L = [];
+  let mx = 0, my = 0, mz = 0, mt = 0, v2 = 0, nv = 0;
+  // layers by clustering heights, so settling and compression never shift a block's layer number
+  const tb = PHYS.blocks.filter((b) => b.state === 'tower' && b !== DRAG.block).sort((a, c) => a.pos.y - c.pos.y);
+  let k = -1, ly = -1e9;
+  for (const b of tb) {
+    if (b.pos.y - ly > B.height * 0.5) { k = k < 0 ? Math.max(0, Math.round((b.pos.y - B.height / 2) / B.height)) : k + 1; ly = b.pos.y; }
+    b.k = k;
+  }
+  for (const b of tb) {
+    const k = b.k;
+    (L[k] = L[k] || []).push(b);
+    mx += b.pos.x * b.mass; my += b.pos.y * b.mass; mz += b.pos.z * b.mass; mt += b.mass;
+    const lv = b.body.linvel(); v2 += lv.x * lv.x + lv.y * lv.y + lv.z * lv.z; nv++;
+  }
+  STRUCT.layers = L;
+  let top = L.length - 1;
+  while (top >= 0 && !L[top]) top--;
+  STRUCT.top = top;
+  STRUCT.topCount = top >= 0 ? L[top].length : 0;
+  STRUCT.completeTop = STRUCT.topCount >= 3 ? top : top - 1;
+  if (mt > 0) STRUCT.com.set(mx / mt, my / mt, mz / mt);
+  STRUCT.motion = nv ? Math.sqrt(v2 / nv) : 0;
+  // support margin: the mass above every layer must sit over that layer's footprint
+  let worst = 1;
+  const above = { m: 0, x: 0, z: 0 };
+  const boxes = [];
+  for (let k = top; k >= 0; k--) {
+    const lay = L[k];
+    if (!lay) { worst = Math.min(worst, -1); continue; }
+    let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+    for (const b of lay) {
+      const ex = Math.abs(b.axis.x) * b.L / 2 + Math.abs(b.axis.z) * b.W / 2, ez = Math.abs(b.axis.z) * b.L / 2 + Math.abs(b.axis.x) * b.W / 2;
+      x0 = Math.min(x0, b.pos.x - ex); x1 = Math.max(x1, b.pos.x + ex); z0 = Math.min(z0, b.pos.z - ez); z1 = Math.max(z1, b.pos.z + ez);
+    }
+    boxes[k] = { x0, x1, z0, z1 };
+    if (above.m > 0) {
+      const cx = above.x / above.m, cz = above.z / above.m;
+      const mxr = Math.min(cx - x0, x1 - cx) / ((x1 - x0) / 2), mzr = Math.min(cz - z0, z1 - cz) / ((z1 - z0) / 2);
+      worst = Math.min(worst, mxr, mzr);
+    }
+    for (const b of lay) { above.m += b.mass; above.x += b.pos.x * b.mass; above.z += b.pos.z * b.mass; }
+  }
+  STRUCT.base = boxes[0] || null;
+  STRUCT.margin = worst;
+  // tilt of the top layers
+  let tilt = 0, nt = 0;
+  for (let k = Math.max(0, top - 1); k <= top; k++) if (L[k]) for (const b of L[k]) { _v.set(0, 1, 0).applyQuaternion(b.quat); tilt += Math.acos(clamp(_v.y, -1, 1)); nt++; }
+  STRUCT.tilt = nt ? THREE.MathUtils.radToDeg(tilt / nt) : 0;
+  if (STRUCT.base) {
+    const bx = (STRUCT.base.x0 + STRUCT.base.x1) / 2, bz = (STRUCT.base.z0 + STRUCT.base.z1) / 2;
+    STRUCT.comOffset = Math.hypot(STRUCT.com.x - bx, STRUCT.com.z - bz);
+  }
+  const s = 0.55 * clamp(STRUCT.margin, 0, 1) + 0.25 * (1 - smooth(0.5, 9, STRUCT.tilt)) + 0.2 * (1 - smooth(0.2, 4, STRUCT.motion));
+  STRUCT.stability = lerp(STRUCT.stability, s, 0.25);
+  // stress share: load relative to an even split of the weight above
+  for (let k = 0; k <= top; k++) {
+    if (!L[k]) continue;
+    let n = 0;
+    for (let j = k + 1; j <= top; j++) if (L[j]) n += L[j].length;
+    for (const b of L[k]) b.share = b.load / Math.max(0.6, n / 2);
+  }
+}
+function marginWithout(blk) { // support margin if this block were gone
+  const k = layerOf(blk), lay = STRUCT.layers[k];
+  if (!lay) return 1;
+  const rest = lay.filter((b) => b !== blk);
+  if (!rest.length) return -1;
+  let m = 0, x = 0, z = 0;
+  for (let j = k + 1; j <= STRUCT.top; j++) if (STRUCT.layers[j]) for (const b of STRUCT.layers[j]) { m += b.mass; x += b.pos.x * b.mass; z += b.pos.z * b.mass; }
+  if (!m) return 1;
+  let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+  for (const b of rest) {
+    const ex = Math.abs(b.axis.x) * b.L / 2 + Math.abs(b.axis.z) * b.W / 2, ez = Math.abs(b.axis.z) * b.L / 2 + Math.abs(b.axis.x) * b.W / 2;
+    x0 = Math.min(x0, b.pos.x - ex); x1 = Math.max(x1, b.pos.x + ex); z0 = Math.min(z0, b.pos.z - ez); z1 = Math.max(z1, b.pos.z + ez);
+  }
+  const cx = x / m, cz = z / m;
+  return Math.min(Math.min(cx - x0, x1 - cx) / ((x1 - x0) / 2), Math.min(cz - z0, z1 - cz) / ((z1 - z0) / 2));
+}
+const towerCentre = () => (STRUCT.base ? _v2.set((STRUCT.base.x0 + STRUCT.base.x1) / 2, 0, (STRUCT.base.z0 + STRUCT.base.z1) / 2) : _v2.set(0, 0, 0));
+
+/* ---------- grab and drag ---------- */
+const DRAG = {
+  block: null, local: new THREE.Vector3(), axis: new THREE.Vector3(), lineP: new THREE.Vector3(), target: new THREE.Vector3(), tension: 0, force: 0,
+  phase: 'idle', carryY: 0, yaw: 0, slot: null, holdT: 0,
+};
+const gravityNow = () => CFG.physics.gravity * PHYS.params.gravity;
+const fmax = (b) => CFG.drag.maxForceBlocks * b.mass * gravityNow() * PHYS.params.pull;
+const _P = new THREE.Vector3(), _T = new THREE.Vector3(), _VP = new THREE.Vector3(), _F = new THREE.Vector3(), _W = new THREE.Vector3(), _E = new THREE.Vector3();
+function dragForces(dt) {
+  const b = DRAG.block;
+  if (!b) { DRAG.tension = 0; return; }
+  const body = b.body, carrying = DRAG.phase !== 'extract';
+  // pulling acts at the grabbed end; carrying holds the block by its centre so it stays level
+  if (carrying) _P.copy(b.pos); else _P.copy(DRAG.local).applyQuaternion(b.quat).add(b.pos);
+  const lv = body.linvel(), av = body.angvel();
+  _W.set(av.x, av.y, av.z);
+  _VP.set(lv.x, lv.y, lv.z);
+  if (!carrying) _VP.add(_E.subVectors(_P, b.pos).cross(_W).negate());
+  const m = b.mass, om = TAU * 10 * Math.sqrt(PHYS.params.pull), k = m * om * om, c = 2 * 0.9 * Math.sqrt(k * m);
+  const T = _T.copy(DRAG.target);
+  if (DRAG.phase === 'carry') {
+    // route over the top: while the block is below the top surface it rises outside the tower first
+    const tc = towerCentre(), dx = b.pos.x - tc.x, dz = b.pos.z - tc.z, rc = Math.hypot(dx, dz) || 1;
+    if (b.pos.y < DRAG.carryY - 1.2 && rc < 12) {
+      const keep = Math.max(rc, 9.5);
+      T.set(tc.x + (dx / rc) * keep, DRAG.carryY + 0.4, tc.z + (dz / rc) * keep);
+    }
+  }
+  if (carrying) {
+    // carrying is a speed-limited servo: smooth, no overshoot, gentle when lowering into a slot
+    const vmax = DRAG.phase === 'drop' ? 10 : 30;
+    _E.subVectors(T, b.pos);
+    const dist = _E.length(), sp = dist > 1e-6 ? Math.min(vmax, dist * 7) / dist : 0;
+    _F.set(_E.x * sp - lv.x, _E.y * sp - lv.y, _E.z * sp - lv.z).multiplyScalar(m * 24);
+  } else _F.subVectors(T, _P).multiplyScalar(k).addScaledVector(_VP, -c);
+  if (DRAG.phase === 'extract') {
+    // stiff along the block, softer sideways and vertically: you steer the pull, the tower decides
+    const along = _F.dot(DRAG.axis);
+    _E.copy(DRAG.axis).multiplyScalar(along);
+    _F.sub(_E).multiplyScalar(0.45).add(_E);
+  } else {
+    _F.y += m * gravityNow(); // the hand carries the block's weight
+  }
+  const fm = fmax(b), mag = _F.length();
+  if (mag > fm) _F.multiplyScalar(fm / mag);
+  DRAG.force = Math.min(mag, fm);
+  DRAG.tension = DRAG.force / fm;
+  body.applyImpulseAtPoint({ x: _F.x * dt, y: _F.y * dt, z: _F.z * dt }, { x: _P.x, y: _P.y, z: _P.z }, true);
+  // wrist: damp spin, and when carrying, hold the block level at the target yaw
+  const I = (m * b.L * b.L) / 12;
+  let tx = -_W.x * I * 6, ty = -_W.y * I * 6, tz = -_W.z * I * 6;
+  if (DRAG.phase !== 'extract') {
+    // a bar looks the same turned half way round: aim for whichever target yaw is nearer
+    const cur = Math.atan2(-b.axis.z, b.axis.x);
+    let ty0 = DRAG.yaw;
+    while (ty0 - cur > Math.PI / 2) ty0 -= Math.PI;
+    while (ty0 - cur < -Math.PI / 2) ty0 += Math.PI;
+    _q.setFromAxisAngle(_E.set(0, 1, 0), ty0);
+    const err = _q.multiply(b.quat.clone().invert());
+    if (err.w < 0) { err.x *= -1; err.y *= -1; err.z *= -1; err.w *= -1; }
+    const kr = I * (TAU * 2.4) ** 2;
+    tx += err.x * 2 * kr; ty += err.y * 2 * kr; tz += err.z * 2 * kr;
+    tx -= _W.x * I * 10; ty -= _W.y * I * 10; tz -= _W.z * I * 10;
+  }
+  body.applyTorqueImpulse({ x: tx * dt, y: ty * dt, z: tz * dt }, true);
+  // precision challenge: sustained force over the limit is a strike
+  if (GAME.mode === 'precision' && DRAG.phase === 'extract' && GAME.state === 'playing') {
+    GAME.peakTension = Math.max(GAME.peakTension, DRAG.tension);
+    if (DRAG.tension > UIS.limit) GAME.overTension += dt; else GAME.overTension = Math.max(0, GAME.overTension - dt * 0.5);
+    if (GAME.overTension > 0.1) { GAME.overTension = 0; strike(); }
+  }
+}
+
+/* ---------- placement slots on top of the tower ---------- */
+function topSlots() {
+  const L = STRUCT.layers, top = STRUCT.top;
+  if (top < 0) return [];
+  let k = top, along, cx, cz, surface;
+  const lay = L[top];
+  const layAlongX = (ls) => ls.reduce((a, b) => a + Math.abs(b.axis.x) - Math.abs(b.axis.z), 0) > 0;
+  const below = STRUCT.topCount >= 3 ? lay : (L[top - 1] || lay);
+  if (STRUCT.topCount >= 3) { k = top + 1; along = !layAlongX(lay); }
+  else along = layAlongX(lay);
+  cx = below.reduce((a, b) => a + b.pos.x, 0) / below.length; cz = below.reduce((a, b) => a + b.pos.z, 0) / below.length;
+  surface = Math.max(...below.map((b) => b.pos.y + b.halfH));
+  const slots = [];
+  for (let j = 0; j < 3; j++) {
+    const off = (j - 1) * (B.width + B.gap);
+    const p = along ? new THREE.Vector3(cx, surface + B.height / 2, cz + off) : new THREE.Vector3(cx + off, surface + B.height / 2, cz);
+    const taken = STRUCT.topCount < 3 && lay.some((b) => b !== DRAG.block && b.pos.distanceTo(p) < B.width * 0.6);
+    if (!taken) slots.push({ p, yaw: along ? 0 : Math.PI / 2, layer: k });
+  }
+  return slots;
+}
+const ghost = new THREE.Group();
+{
+  const g = new THREE.BoxGeometry(B.length, B.height, B.width);
+  const fillM = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xc27f22, transparent: true, opacity: 0.16, depthWrite: false }));
+  const edge = new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color: 0xc27f22, transparent: true, opacity: 0.9 }));
+  ghost.add(fillM, edge);
+  ghost.visible = false;
+  scene.add(ghost);
+}
+
+/* ---------- pointer → target ---------- */
+const raycaster = new THREE.Raycaster();
+const NDC = new THREE.Vector2();
+function setRay(cx, cy) {
+  const r = canvas.getBoundingClientRect();
+  NDC.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(NDC, camera);
+}
+function pickBlock(cx, cy) {
+  setRay(cx, cy);
+  const hit = raycaster.intersectObject(blockMesh, false)[0];
+  return hit ? { b: PHYS.blocks[hit.instanceId], p: hit.point.clone() } : null;
+}
+const _o = new THREE.Vector3(), _d = new THREE.Vector3();
+function updateTarget(cx, cy) {
+  if (!DRAG.block) return;
+  setRay(cx, cy);
+  _o.copy(raycaster.ray.origin); _d.copy(raycaster.ray.direction);
+  if (DRAG.phase === 'extract') {
+    // closest point on the block's axis line to the mouse ray
+    const a = DRAG.axis, w0 = _E.subVectors(DRAG.lineP, _o);
+    const bb = a.dot(_d), dd = a.dot(w0), ee = _d.dot(w0), den = 1 - bb * bb;
+    let t = den > 1e-4 ? (bb * ee - dd) / den : 0;
+    t = clamp(t, -14, 14);
+    DRAG.target.copy(DRAG.lineP).addScaledVector(a, t);
+  } else {
+    const y = DRAG.carryY;
+    if (Math.abs(_d.y) < 1e-4) return;
+    const u = (y - _o.y) / _d.y;
+    if (u <= 0) return;
+    const tx = _o.x + _d.x * u, tz = _o.z + _d.z * u, rr = Math.hypot(tx, tz), lim = PLINTH.r - 3;
+    const s = rr > lim ? lim / rr : 1;
+    DRAG.target.set(tx * s, y, tz * s);
+    DRAG.slot = null;
+    if (GAME.assisted) {
+      let best = null, bd = CFG.drag.snapRadius;
+      for (const sl of topSlots()) { const dd2 = Math.hypot(sl.p.x - DRAG.target.x, sl.p.z - DRAG.target.z); if (dd2 < bd) { bd = dd2; best = sl; } }
+      if (best) { DRAG.slot = best; DRAG.yaw = best.yaw; DRAG.target.set(best.p.x, y, best.p.z); }
+    }
+  }
+}
+
+/* ---------- grabbing ---------- */
+function canGrab(b) {
+  if (GAME.state === 'over' || GAME.state === 'replay' || GAME.state === 'paused') return 'The game is not running';
+  if (GAME.phase === 'settling' || GAME.phase === 'drop') return 'Wait for the block to settle';
+  if (b.state === 'loose') return b === GAME.active ? null : 'That block is out of play';
+  if (GAME.active && GAME.active.state === 'loose') return 'Place the extracted block on top first';
+  if (!GAME.practice) {
+    const k = layerOf(b);
+    if (k >= STRUCT.completeTop) return k > STRUCT.completeTop ? 'You can only build on the top layer' : 'The top complete layer is locked';
+  }
+  return null;
+}
+function grab(hit) {
+  const b = hit.b;
+  DRAG.block = b;
+  DRAG.local.copy(hit.p).sub(b.pos).applyQuaternion(b.quat.clone().invert());
+  DRAG.axis.copy(b.axis).setY(0).normalize();
+  DRAG.lineP.copy(hit.p);
+  DRAG.target.copy(hit.p);
+  DRAG.slot = null;
+  b.body.enableCcd(true);
+  b.body.wakeUp();
+  if (b.state === 'loose') { startCarry(b); }
+  else {
+    DRAG.phase = 'extract';
+    if (GAME.active !== b) { GAME.extractStartT = GAME.time; GAME.peakTension = 0; GAME.overTension = 0; GAME.lastLayerOfActive = layerOf(b); }
+    GAME.active = b;
+  }
+  GAME.phase = DRAG.phase;
+  if (!GAME.firstGrab) { GAME.firstGrab = true; $('hint').classList.add('gone'); }
+  AUDIO.tap(0.25, b);
+}
+function startCarry(b) {
+  DRAG.phase = 'carry';
+  const tops = topSlots();
+  const surface = tops.length ? tops[0].p.y - B.height / 2 : STRUCT.com.y * 2;
+  DRAG.carryY = surface + B.height / 2 + CFG.drag.carryLift;
+  DRAG.yaw = GAME.assisted && tops.length ? tops[0].yaw : Math.atan2(-b.axis.z, b.axis.x);
+  DRAG.target.copy(b.pos).setY(DRAG.carryY);
+  GAME.phase = 'carry';
+}
+function release(reason = '') {
+  const b = DRAG.block;
+  if (!b) return;
+  if (DRAG.phase === 'carry' && DRAG.slot) {
+    // assisted drop: ease into the slot, then let go a hair above it
+    DRAG.phase = 'drop'; GAME.phase = 'drop'; GAME.dropT = 0;
+    DRAG.target.copy(DRAG.slot.p).y += 0.18;
+    return;
+  }
+  const overTower = Math.hypot(b.pos.x - towerCentre().x, b.pos.z - towerCentre().z) < 5.2 && b.pos.y > STRUCT.com.y;
+  b.body.enableCcd(false);
+  DRAG.block = null;
+  if (b.state === 'loose') { GAME.phase = overTower ? 'settling' : 'idle'; GAME.settleT = 0; }
+  else GAME.phase = 'idle';
+  DRAG.phase = 'idle';
+  DRAG.tension = 0;
+}
+function strike() {
+  GAME.strikes++;
+  toast(`Force limit exceeded · strike ${GAME.strikes}/3`, true);
+  AUDIO.tap(0.5);
+  release('strike');
+  if (GAME.strikes >= 3) endGame('Three strikes: too much force on extraction.');
+}
+
+/* ---------- per-step game logic ---------- */
+function afterStep(dt) {
+  REC.record(dt);
+  if (GAME.state !== 'playing' && GAME.state !== 'over') return;
+  const b = DRAG.block;
+  if (b && DRAG.phase === 'extract') {
+    const c = towerCentre();
+    const out = Math.abs((b.pos.x - c.x) * DRAG.axis.x + (b.pos.z - c.z) * DRAG.axis.z);
+    if (out > b.L / 2 + 3.85 && GAME.state === 'playing') {
+      b.state = 'loose';
+      GAME.removed++;
+      const tEx = GAME.time - GAME.extractStartT;
+      RECORDS.bump('fastest', tEx, (a, n) => n < a);
+      toast('Block out. Now place it on top.');
+      AUDIO.tap(0.35, b);
+      startCarry(b);
+    }
+  }
+  if (DRAG.phase === 'drop' && b) {
+    GAME.dropT += dt;
+    if (GAME.dropT > 1.2 || (b.pos.distanceTo(DRAG.target) < 0.1 && Math.abs(b.body.linvel().y) < 1.5)) {
+      b.body.enableCcd(false);
+      DRAG.block = null; DRAG.phase = 'idle'; DRAG.tension = 0;
+      GAME.phase = 'settling'; GAME.settleT = 0;
+    }
+  }
+  if (GAME.phase === 'settling' && GAME.active && !DRAG.block) {
+    const a = GAME.active, lv = a.body.linvel(), av = a.body.angvel();
+    const still = Math.hypot(lv.x, lv.y, lv.z) < 0.8 && Math.hypot(av.x, av.y, av.z) < 0.2;
+    GAME.settleT = still ? GAME.settleT + dt : Math.max(0, GAME.settleT - dt);
+    if (GAME.settleT > 0.35) {
+      const c = towerCentre(), onTop = Math.hypot(a.pos.x - c.x, a.pos.z - c.z) < 4.6 && a.pos.y > (STRUCT.top) * B.height;
+      if (onTop && GAME.state === 'playing') completeTurn(a);
+      else { GAME.phase = 'idle'; toast('Not on the tower. Pick it up and place it on top.'); }
+    }
+  }
+  if (GAME.state === 'playing') detectCollapse();
+  if (GAME.mode === 'quake' && GAME.state === 'playing') {
+    const now = PHYS.simTime;
+    $('quake').hidden = !(now > QUAKE.next - 2.2 && now < QUAKE.next);
+    if (!$('quake').hidden) $('quake').textContent = `Tremor in ${Math.max(0, QUAKE.next - now).toFixed(1)} s`;
+    if (now >= QUAKE.next) { QUAKE.t = 0; scheduleQuake(now); AUDIO.rumble(QUAKE.intensity); }
+  } else $('quake').hidden = true;
+}
+function detectCollapse() {
+  for (const b of PHYS.blocks) {
+    if (b.state !== 'tower' || b === DRAG.block) continue;
+    const c = towerCentre();
+    const dropped = b.pos.y < b.homeY - B.height * 0.9;
+    const off = Math.hypot(b.pos.x - c.x, b.pos.z - c.z) > 6.4 && b.pos.y < b.homeY - B.height * 0.3;
+    if (dropped || off) { endGame(b === GAME.active ? 'The block you were pulling fell out of the tower.' : 'A block fell from the tower.'); return; }
+  }
+  if (STRUCT.tilt > 28) endGame('The tower toppled.');
+}
+function completeTurn(a) {
+  a.state = 'tower';
+  a.homeY = a.pos.y;
+  const depth = 1 + (STRUCT.top - GAME.lastLayerOfActive) / Math.max(1, STRUCT.top);
+  let pts = 100 * depth * MODES[GAME.mode].mult * (GAME.slowUsedTurn ? 1 : 1.15);
+  if (GAME.mode === 'precision') pts *= 1 + clamp(1 - GAME.peakTension / UIS.limit, 0, 1);
+  pts = Math.round(pts);
+  GAME.score += pts;
+  GAME.turnsDone++;
+  GAME.turn++;
+  GAME.active = null; GAME.phase = 'idle'; GAME.slowUsedTurn = false;
+  for (const b of PHYS.blocks) if (b.state === 'tower') b.homeY = b.pos.y;
+  analyse();
+  GAME.maxLayers = Math.max(GAME.maxLayers, STRUCT.top + 1);
+  if (GAME.practice) GAME.history.push({ snap: snapshot(), game: pickGame() });
+  toast(`Turn complete · +${pts}`);
+  AUDIO.tap(0.3, a);
+}
+const pickGame = () => ({ turn: GAME.turn, removed: GAME.removed, turnsDone: GAME.turnsDone, score: GAME.score, maxLayers: GAME.maxLayers, strikes: GAME.strikes });
+function endGame(reason) {
+  if (GAME.state === 'over') return;
+  GAME.state = 'over';
+  GAME.overReason = reason;
+  GAME.overAt = performance.now();
+  DRAG.slot = null;
+  if (DRAG.block) release('over');
+  REC.stopAt = PHYS.simTime + 3.2;
+  AUDIO.collapse();
+  const noSlow = !GAME.slowUsed;
+  if (GAME.turnsDone > 0) {
+    RECORDS.bump('moves', GAME.turnsDone, (a, n) => n > a);
+    RECORDS.bump('tower', GAME.maxLayers, (a, n) => n > a);
+    if (noSlow) RECORDS.bump('scoreNoSlow', GAME.score, (a, n) => n > a);
+    RECORDS.bump('hardest', challengeRank(), (a, n) => n.rank > a.rank);
+  }
+  const at = GAME.overAt;
+  setTimeout(() => { if (GAME.state === 'over' && GAME.overAt === at) showResult(); }, 2400);
+}
+function challengeRank() {
+  const r = { classic: 1, flex: 2, quake: 3, precision: 3, extreme: 4 }[GAME.mode] * 10 + GAME.layers / 6;
+  return { rank: r, label: `${MODES[GAME.mode].name} · ${DIFF[GAME.layers]}` };
+}
+
+/* ---------- records ---------- */
+const RECORDS = {
+  key: 'flexjenga.records.v1', data: {},
+  load() { try { this.data = JSON.parse(localStorage.getItem(this.key) || '{}') || {}; } catch (_) { this.data = {}; } },
+  save() { try { localStorage.setItem(this.key, JSON.stringify(this.data)); } catch (_) { /* storage unavailable */ } },
+  bump(name, value, better) {
+    const cur = this.data[name];
+    if (cur === undefined || better(cur, value)) { this.data[name] = value; this.save(); if (typeof renderRecords === 'function') renderRecords(); }
+  },
+};
+
+/* =====================================================================================
+   AUDIO: procedural wood. Knocks are noise bursts through tuned resonators, sliding is a
+   band-passed hiss that follows the pulled block's speed and load. Impacts come from real
+   velocity changes, so resting blocks stay silent.
+   ===================================================================================== */
+const AUDIO = {
+  ctx: null, master: null, noise: null, on: true, volume: 0.7, voices: 0, slideGain: null, slideFilter: null, lastV: [], cooldown: [],
+  ensure() {
+    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return true; }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return false;
+    const c = (this.ctx = new AC());
+    this.master = c.createGain(); this.master.gain.value = this.on ? this.volume : 0; this.master.connect(c.destination);
+    const len = c.sampleRate, buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    this.noise = buf;
+    const src = c.createBufferSource(); src.buffer = buf; src.loop = true;
+    this.slideFilter = c.createBiquadFilter(); this.slideFilter.type = 'bandpass'; this.slideFilter.frequency.value = 1300; this.slideFilter.Q.value = 1.4;
+    this.slideGain = c.createGain(); this.slideGain.gain.value = 0;
+    src.connect(this.slideFilter); this.slideFilter.connect(this.slideGain); this.slideGain.connect(this.master); src.start();
+    return true;
+  },
+  setOn(on) { this.on = on; if (this.master) this.master.gain.setTargetAtTime(on ? this.volume : 0, this.ctx.currentTime, 0.05); },
+  setVolume(v) { this.volume = v; if (this.master && this.on) this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05); },
+  knock(strength, pitch = 1) {
+    if (!this.ctx || !this.on || this.voices > 12 || strength < 0.02) return;
+    const c = this.ctx, t = c.currentTime, s = clamp(strength, 0, 1);
+    this.voices++;
+    const src = c.createBufferSource(); src.buffer = this.noise; src.playbackRate.value = 0.8 + Math.random() * 0.4;
+    const out = c.createGain();
+    out.gain.setValueAtTime(0, t); out.gain.linearRampToValueAtTime(0.5 * s, t + 0.002); out.gain.exponentialRampToValueAtTime(0.0008, t + 0.05 + 0.06 * s);
+    src.connect(out);
+    const mix = c.createGain(); mix.gain.value = 1;
+    for (const [f, q, g] of [[880, 9, 0.9], [1720, 12, 0.6], [2650, 14, 0.35]]) {
+      const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f * pitch * (0.94 + Math.random() * 0.12); bp.Q.value = q;
+      const gg = c.createGain(); gg.gain.value = g * 2.2;
+      out.connect(bp); bp.connect(gg); gg.connect(mix);
+    }
+    const thump = c.createOscillator(), tg = c.createGain();
+    thump.frequency.setValueAtTime(190 * pitch, t); thump.frequency.exponentialRampToValueAtTime(120 * pitch, t + 0.05);
+    tg.gain.setValueAtTime(0.18 * s, t); tg.gain.exponentialRampToValueAtTime(0.0005, t + 0.06);
+    thump.connect(tg); tg.connect(mix);
+    mix.connect(this.master);
+    src.start(t, Math.random() * 0.5); src.stop(t + 0.16); thump.start(t); thump.stop(t + 0.08);
+    src.onended = () => { this.voices--; };
+  },
+  tap(strength, b) { this.knock(strength, b ? 7.5 / b.L : 1); },
+  rumble(intensity) {
+    if (!this.ctx || !this.on) return;
+    const c = this.ctx, t = c.currentTime, src = c.createBufferSource(), lp = c.createBiquadFilter(), g = c.createGain();
+    src.buffer = this.noise; src.loop = true; lp.type = 'lowpass'; lp.frequency.value = 140;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.5 * intensity, t + 0.2); g.gain.linearRampToValueAtTime(0, t + 1.7);
+    src.connect(lp); lp.connect(g); g.connect(this.master); src.start(t); src.stop(t + 1.8);
+  },
+  collapse() { this.knock(0.9, 0.8); },
+  // called every frame: impacts from velocity jumps, sliding from the dragged block
+  update(dt) {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    PHYS.blocks.forEach((b, i) => {
+      const lv = b.body.linvel(), v = Math.hypot(lv.x, lv.y, lv.z), pv = this.lastV[i] ?? v;
+      const dv = Math.abs(v - pv);
+      this.lastV[i] = v;
+      if (dv > 9 && v < pv && (this.cooldown[i] ?? 0) < now && b !== DRAG.block) {
+        this.cooldown[i] = now + 0.07;
+        this.knock(clamp(dv / 120, 0.05, 1), 7.5 / b.L);
+      }
+    });
+    let s = 0;
+    if (DRAG.block && DRAG.phase === 'extract') {
+      const lv = DRAG.block.body.linvel();
+      s = clamp(Math.hypot(lv.x, lv.z) / 6, 0, 1) * (0.25 + clamp(DRAG.block.load / 12, 0, 0.75));
+    }
+    this.slideGain.gain.setTargetAtTime(s * 0.22, now, 0.04);
+    this.slideFilter.frequency.setTargetAtTime(900 + s * 900, now, 0.05);
+  },
+};
+
+/* =====================================================================================
+   UI, CAMERA, LOOP
+   ===================================================================================== */
+const UIS = { limit: 0.45, stress: false, com: false, stab: true, precision: false, speed: 0.25, orbit: true, challenge: 'survival', challengeLabel: 'Survival' };
+let controls;
+const CAMS = { target: new THREE.Vector3(0, 12, 0), dist: 85, distTarget: 85, min: 18, max: 260, tween: null, sph: new THREE.Spherical() };
+
+function toast(msg, warn = false) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.toggle('warn', warn);
+  t.classList.add('show');
+  clearTimeout(toast.h);
+  toast.h = setTimeout(() => t.classList.remove('show'), 2300);
+}
+
+/* ---------- camera ---------- */
+function towerHeight() { return Math.max(GAME.layers, STRUCT.top + 1) * B.height; }
+function fitDistance() {
+  const r = freeRect(), h = innerHeight, half = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const viewH = towerHeight() * 1.3 + 9, viewW = 44;
+  const dH = (viewH / 2) / half * (h / Math.max(r.h, 1));
+  const dW = (viewW / 2) / (half * (r.w / h)) ;
+  return clamp(Math.max(dH, dW), 30, CAMS.max);
+}
+function camGoal(name) {
+  const deg = THREE.MathUtils.degToRad, d = fitDistance();
+  switch (name) {
+    case 'front': return { r: d, phi: deg(90 - 10), theta: 0 };
+    case 'side': return { r: d, phi: deg(90 - 10), theta: deg(90) };
+    case 'top': return { r: d * 0.9, phi: deg(6), theta: deg(38) };
+    default: return { r: d, phi: deg(90 - CFG.camera.elevationDeg), theta: deg(CFG.camera.azimuthDeg) };
+  }
+}
+function camGo(name, dur = 1.0) {
+  controls.autoRotate = name === 'orbit';
+  $('camVal').textContent = { front: 'Front', side: 'Side', top: 'Top', orbit: 'Free orbit', reset: 'Default' }[name] || 'Default';
+  if (name === 'orbit') return;
+  const from = new THREE.Spherical().setFromVector3(_v.copy(camera.position).sub(controls.target));
+  const to = camGoal(name);
+  let dth = to.theta - from.theta; dth = Math.atan2(Math.sin(dth), Math.cos(dth));
+  CAMS.tween = { from: { r: from.radius, phi: from.phi, theta: from.theta }, to: { r: to.r, phi: to.phi, theta: from.theta + dth }, k: 0, dur };
+}
+function camUpdate(dt) {
+  CAMS.target.y = damp(CAMS.target.y, towerHeight() * 0.44, 2, dt);
+  controls.target.copy(CAMS.target);
+  if (CAMS.tween) {
+    const tw = CAMS.tween, k = (tw.k = Math.min(1, tw.k + dt / tw.dur)), e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+    CAMS.sph.set(lerp(tw.from.r, tw.to.r, e), lerp(tw.from.phi, tw.to.phi, e), lerp(tw.from.theta, tw.to.theta, e));
+    camera.position.setFromSpherical(CAMS.sph).add(controls.target);
+    CAMS.dist = CAMS.distTarget = CAMS.sph.radius;
+    if (k >= 1) CAMS.tween = null;
+  }
+  controls.update();
+  if (!CAMS.tween) {
+    CAMS.dist = damp(CAMS.dist, CAMS.distTarget, 10, dt);
+    _v.copy(camera.position).sub(controls.target).setLength(CAMS.dist);
+    camera.position.copy(controls.target).add(_v);
+  }
+}
+function setupControls() {
+  controls = new OrbitControls(camera, canvas);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.enablePan = false;
+  controls.enableZoom = false;
+  controls.rotateSpeed = 0.6;
+  controls.minPolarAngle = 0.05;
+  controls.maxPolarAngle = THREE.MathUtils.degToRad(88);
+  controls.autoRotateSpeed = 0.7;
+  controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+  controls.target.copy(CAMS.target);
+  controls.addEventListener('start', () => { CAMS.tween = null; if (controls.autoRotate) { controls.autoRotate = false; $('camVal').textContent = 'Custom'; } });
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    CAMS.tween = null;
+    CAMS.distTarget = clamp(CAMS.distTarget * Math.pow(1.0011, e.deltaY), CAMS.min, CAMS.max);
+  }, { passive: false });
+}
+
+/* ---------- pointer ---------- */
+const PTR = { x: 0, y: 0, down: false, hover: null, moved: false };
+function setupPointer() {
+  // registered before OrbitControls, so a press on a block switches orbiting off for that gesture
+  canvas.addEventListener('pointerdown', (e) => {
+    PTR.x = e.clientX; PTR.y = e.clientY;
+    AUDIO.ensure();
+    if (e.button !== 0 || GAME.state === 'replay') return;
+    const hit = pickBlock(e.clientX, e.clientY);
+    if (!hit) return;
+    const why = canGrab(hit.b);
+    controls.enabled = false;
+    if (why) { toast(why, true); return; }
+    if (GAME.state === 'ready') startGame();
+    grab(hit);
+    updateTarget(e.clientX, e.clientY);
+    PTR.down = true;
+    canvas.classList.add('dragging');
+    try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+  });
+  canvas.addEventListener('pointermove', (e) => { PTR.x = e.clientX; PTR.y = e.clientY; PTR.moved = true; });
+  const up = (e) => {
+    if (PTR.down) { PTR.down = false; canvas.classList.remove('dragging'); if (DRAG.block && DRAG.phase !== 'drop') release(); }
+    controls.enabled = true;
+    try { canvas.releasePointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+  };
+  canvas.addEventListener('pointerup', up);
+  canvas.addEventListener('pointercancel', up);
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  window.addEventListener('keydown', (e) => {
+    if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+    if (e.key === ' ') { if (e.target && e.target.tagName === 'BUTTON') return; e.preventDefault(); setPrecision(!UIS.precision); }
+    else if (e.key === 'Escape') { if (DRAG.block) { if (DRAG.phase === 'drop') return; DRAG.slot = null; release('esc'); PTR.down = false; canvas.classList.remove('dragging'); } else if (!$('result').hidden) $('result').hidden = true; }
+    else if ((e.key === 'q' || e.key === 'Q') && DRAG.phase === 'carry') DRAG.yaw += Math.PI / 12;
+    else if ((e.key === 'e' || e.key === 'E') && DRAG.phase === 'carry') DRAG.yaw -= Math.PI / 12;
+  });
+}
+function hoverUpdate() {
+  if (PTR.down || GAME.state === 'replay') { setHover(null); return; }
+  const hit = PTR.moved ? pickBlock(PTR.x, PTR.y) : (PTR.hover ? { b: PTR.hover } : null);
+  PTR.moved = false;
+  setHover(hit ? hit.b : null);
+}
+function setHover(b) {
+  if (PTR.hover && PTR.hover !== b) PTR.hover.hover = 0;
+  PTR.hover = b;
+  canvas.classList.toggle('hover-block', !!b);
+  const pr = $('probe');
+  if (!b || DRAG.block) { pr.hidden = true; return; }
+  b.hover = canGrab(b) ? 0.35 : 1;
+  const g = gravityNow(), w = b.mass * g;
+  const k = layerOf(b), lay = STRUCT.layers[k] || [];
+  const sorted = lay.slice().sort((a, c) => (a.pos.x + a.pos.z) - (c.pos.x + c.pos.z));
+  const pos = lay.length === 3 ? ['side', 'centre', 'side'][sorted.indexOf(b)] : lay.length === 1 ? 'last' : 'paired';
+  $('probeTitle').textContent = b.state === 'tower' ? `Layer ${k + 1} · ${pos} block` : 'Extracted block';
+  const resN = (b.mu * (b.aF + b.bF)) / 1e5;
+  const m = b.state === 'tower' ? marginWithout(b) : 1;
+  const risk = clamp(0.55 * (resN / (fmax(b) / 1e5)) + 0.45 * (1 - clamp(m, 0, 1)), 0, 1);
+  $('probeLoad').textContent = `${b.load.toFixed(1)} blocks · ${((b.load * w) / 1e5).toFixed(2)} N`;
+  $('probeRes').textContent = `${resN.toFixed(2)} N`;
+  $('probeStab').textContent = m > 0.5 ? 'Solid' : m > 0.15 ? 'Marginal' : m > 0 ? 'Precarious' : 'Would tip';
+  const rk = $('probeRisk');
+  rk.textContent = `${risk < 0.33 ? 'Low' : risk < 0.66 ? 'Medium' : 'High'} · ${Math.round(risk * 100)}%`;
+  rk.className = risk < 0.33 ? 'risk-low' : risk < 0.66 ? 'risk-mid' : 'risk-high';
+  $('probeNote').textContent = canGrab(b) || 'Estimates from live contact forces, not a guarantee.';
+  pr.hidden = false;
+  pr.style.left = Math.min(innerWidth - 220, PTR.x + 18) + 'px';
+  pr.style.top = Math.min(innerHeight - 150, PTR.y + 16) + 'px';
+}
+
+/* ---------- centre of mass marker ---------- */
+const comGroup = new THREE.Group();
+{
+  const mat = new THREE.MeshBasicMaterial({ color: 0xc27f22, depthTest: false, transparent: true });
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.42, 20, 14), mat);
+  const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, -1, 0)]);
+  const line = new THREE.Line(lineGeo, new THREE.LineDashedMaterial({ color: 0xc27f22, dashSize: 0.6, gapSize: 0.4, depthTest: false, transparent: true }));
+  const foot = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: 0xc27f22 }));
+  const dot = new THREE.Mesh(new THREE.CircleGeometry(0.35, 20).rotateX(-Math.PI / 2), mat);
+  comGroup.add(ball, line, foot, dot);
+  comGroup.userData = { ball, line, foot, dot };
+  [ball, line, dot].forEach((o) => (o.renderOrder = 20));
+  comGroup.visible = false;
+  scene.add(comGroup);
+}
+function updateCom() {
+  comGroup.visible = UIS.com && STRUCT.top >= 0 && GAME.state !== 'replay';
+  if (!comGroup.visible) return;
+  const { ball, line, foot, dot } = comGroup.userData;
+  ball.position.copy(STRUCT.com);
+  const p = line.geometry.attributes.position;
+  p.setXYZ(0, STRUCT.com.x, STRUCT.com.y, STRUCT.com.z); p.setXYZ(1, STRUCT.com.x, 0.03, STRUCT.com.z); p.needsUpdate = true;
+  line.computeLineDistances();
+  dot.position.set(STRUCT.com.x, 0.04, STRUCT.com.z);
+  if (STRUCT.base) {
+    const b = STRUCT.base, f = foot.geometry.attributes.position;
+    f.setXYZ(0, b.x0, 0.03, b.z0); f.setXYZ(1, b.x1, 0.03, b.z0); f.setXYZ(2, b.x1, 0.03, b.z1); f.setXYZ(3, b.x0, 0.03, b.z1); f.needsUpdate = true;
+  }
+}
+
+/* ---------- HUD ---------- */
+function updateHud() {
+  $('hudMode').textContent = MODES[GAME.mode].name;
+  $('hudTurn').textContent = GAME.turn;
+  $('hudScore').textContent = GAME.score.toLocaleString('en-US');
+  $('hudHeight').textContent = Math.max(0, STRUCT.top + 1);
+  $('hudTime').textContent = fmtTime(GAME.time);
+  $('hudSpeedChip').hidden = Math.abs(PHYS.timeScale - 1) < 0.02;
+  $('hudSpeed').textContent = PHYS.timeScale.toFixed(2) + '×';
+  $('hudStrikesChip').hidden = GAME.mode !== 'precision';
+  $('hudStrikes').textContent = `${GAME.strikes}/3`;
+  $('stateVal').textContent = { ready: 'Ready', playing: 'Playing', paused: 'Paused', over: 'Collapsed', replay: 'Replay' }[GAME.state];
+  $('stability').hidden = !UIS.stab;
+  const s = STRUCT.stability;
+  const st = s > 0.75 ? ['Stable', 'var(--ok)'] : s > 0.5 ? ['Weakened', 'var(--warn)'] : s > 0.25 ? ['Unbalanced', '#d77b2f'] : ['Critical', 'var(--bad)'];
+  $('stabState').textContent = st[0]; $('stabState').style.color = st[1];
+  $('stabMark').style.left = (clamp(s, 0, 1) * 100).toFixed(1) + '%';
+  $('stabTilt').textContent = `tilt ${STRUCT.tilt.toFixed(1)}°`;
+  $('stabCom').textContent = `CoM ${(STRUCT.comOffset * 10).toFixed(1)} mm`;
+  $('stabMargin').textContent = `margin ${Math.round(clamp(STRUCT.margin, -1, 1) * 100)}%`;
+  const f = $('force');
+  if (DRAG.block) {
+    f.hidden = false;
+    f.style.left = PTR.x + 'px'; f.style.top = PTR.y + 'px';
+    $('forceLabel').textContent = DRAG.phase === 'extract' ? `Pull force ${Math.round(DRAG.tension * 100)}%` : DRAG.slot ? 'Over a slot · release' : 'Carrying · Q/E to turn';
+    $('forceFill').style.width = (DRAG.tension * 100).toFixed(0) + '%';
+    $('forceFill').style.background = DRAG.tension > 0.8 ? 'var(--bad)' : 'var(--amber)';
+    $('forceLimit').hidden = GAME.mode !== 'precision';
+    $('forceLimit').style.left = UIS.limit * 100 + '%';
+  } else f.hidden = true;
+}
+
+/* ---------- results and replay ---------- */
+function showResult() {
+  if (GAME.state !== 'over') return;
+  $('resultEyebrow').textContent = `${MODES[GAME.mode].name} · ${DIFF[GAME.layers]} · ${UIS.challengeLabel}`;
+  $('resultWhy').textContent = GAME.overReason;
+  $('rsRemoved').textContent = GAME.removed;
+  $('rsTurns').textContent = GAME.turnsDone;
+  $('rsTime').textContent = fmtTime(GAME.time);
+  $('rsHeight').textContent = `${GAME.maxLayers} layers`;
+  $('rsDiff').textContent = DIFF[GAME.layers];
+  $('rsScore').textContent = GAME.score.toLocaleString('en-US');
+  $('replayBtn').disabled = REC.count < 30;
+  $('undoResultBtn').hidden = !GAME.practice;
+  $('result').hidden = false;
+}
+const REPLAY = { f: 0, speed: 0.35 };
+function startReplay() {
+  $('result').hidden = true;
+  GAME.state = 'replay';
+  REPLAY.f = 0;
+  $('replayTag').hidden = false;
+}
+function replayTick(dt) {
+  REPLAY.f += dt * REC.fps * REPLAY.speed;
+  if (REPLAY.f >= REC.count - 1) { GAME.state = 'over'; $('replayTag').hidden = true; renderBlocks(); showResult(); return; }
+  renderBlocks(REPLAY.f);
+}
+
+/* ---------- game flow ---------- */
+function dailySeed() { const d = new Date(); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); }
+function newTower() {
+  if (DRAG.block) release('reset');
+  const rnd = UIS.challenge === 'random' ? 1 : 0;
+  buildTower(GAME.layers, GAME.seed, rnd);
+  settle(rnd ? 1.6 : 1.0);
+  if (rnd && PHYS.blocks.some((b) => b.pos.y < b.homeY - 0.6 * B.height)) { buildTower(GAME.layers, GAME.seed + 1, 0.5); settle(1.6); }
+  for (const b of PHYS.blocks) b.homeY = b.pos.y;
+  buildBlockMesh();
+  REC.reset(PHYS.blocks.length);
+  Object.assign(GAME, { state: 'ready', turn: 1, removed: 0, turnsDone: 0, score: 0, time: 0, maxLayers: GAME.layers, strikes: 0, slowUsed: false, slowUsedTurn: false, active: null, phase: 'idle', overReason: '' });
+  STRUCT.stability = 1;
+  analyse();
+  GAME.history = [{ snap: snapshot(), game: pickGame() }];
+  scheduleQuake(PHYS.simTime);
+  QUAKE.t = -1;
+  $('result').hidden = true; $('replayTag').hidden = true;
+  PHYS.paused = false; $('pauseBtn').textContent = 'Pause';
+  updateUndo();
+  renderBlocks();
+}
+function startGame() {
+  if (GAME.state === 'over' || GAME.state === 'replay') newTower();
+  GAME.state = 'playing';
+  scheduleQuake(PHYS.simTime);
+}
+function setPaused(p) {
+  if (GAME.state !== 'playing' && GAME.state !== 'paused') return;
+  GAME.state = p ? 'paused' : 'playing';
+  PHYS.paused = p;
+  if (p && DRAG.block) release('pause');
+  $('pauseBtn').textContent = p ? 'Resume' : 'Pause';
+  $('pauseBtn').classList.toggle('on', p);
+}
+function updateUndo() { $('undoBtn').disabled = !GAME.practice || GAME.history.length < 1; }
+function undo() {
+  if (!GAME.practice) return;
+  if (DRAG.block) release('undo');
+  const midTurn = GAME.active || GAME.state === 'over';
+  if (!midTurn && GAME.history.length > 1) GAME.history.pop();
+  const h = GAME.history[GAME.history.length - 1];
+  restore(h.snap);
+  Object.assign(GAME, h.game, { active: null, phase: 'idle', state: 'playing' });
+  REC.reset(PHYS.blocks.length);
+  $('result').hidden = true;
+  analyse();
+  toast('Move undone');
+}
+function setPrecision(on) {
+  UIS.precision = on;
+  $('precisionToggle').checked = on;
+  PHYS.targetScale = on ? UIS.speed : 1;
+  if (on && GAME.state === 'playing') { GAME.slowUsed = true; GAME.slowUsedTurn = true; }
+}
+
+/* ---------- panel bindings ---------- */
+function slider(id, out, fmt, fn) {
+  const el = $(id), o = $(out);
+  const apply = (fire = true) => { const v = +el.value; o.textContent = fmt(v); el.style.setProperty('--p', ((v - el.min) / (el.max - el.min)) * 100 + '%'); if (fire) fn(v); };
+  el.addEventListener('input', () => apply(true));
+  apply(false);
+  return (v) => { el.value = v; apply(false); };
+}
+const setOn = (sel, attr, val) => document.querySelectorAll(sel).forEach((b) => b.classList.toggle('on', b.dataset[attr] === String(val)));
+const SL = {};
+function wakeAll() { for (const b of PHYS.blocks) b.body.wakeUp(); }
+function applyMaterial(key, keepSliders = false) {
+  PHYS.params.material = key;
+  const m = MATERIALS[key];
+  if (!keepSliders) {
+    PHYS.params.elasticity = m.elast / 100; SL.elast(m.elast);
+    PHYS.params.friction = m.friction; SL.fric(Math.round(m.friction * 100));
+    PHYS.params.damping = m.damping / 100; SL.damp(m.damping);
+  }
+  for (const b of PHYS.blocks) { b.collider.setRestitution(m.restitution); b.collider.setFriction(PHYS.params.friction); b.mu = PHYS.params.friction; }
+  applyBodyDamping();
+  wakeAll();
+  setOn('[data-mat]', 'mat', key);
+  $('matVal').textContent = m.name; $('physVal').textContent = m.name; $('matDesc').textContent = m.desc;
+}
+function applyBodyDamping() { const d = PHYS.params.damping; for (const b of PHYS.blocks) { b.body.setLinearDamping(0.02 + d * 0.1); b.body.setAngularDamping(0.05 + d * 0.25); } }
+function setMode(m) {
+  GAME.mode = m;
+  setOn('[data-mode]', 'mode', m);
+  $('modeDesc').textContent = MODES[m].desc;
+  newTower();
+  applyMaterial(MODES[m].mat);
+  if (MODES[m].elast) { PHYS.params.elasticity = MODES[m].elast / 100; SL.elast(MODES[m].elast); }
+  toast(`${MODES[m].name} mode · new tower`);
+}
+function setChallenge(c, fresh = true) {
+  UIS.challenge = c;
+  setOn('[data-chal]', 'chal', c);
+  if (c === 'daily') {
+    GAME.seed = dailySeed();
+    const r = mulberry32(GAME.seed);
+    const modes = ['flex', 'extreme', 'quake', 'classic', 'precision'];
+    GAME.mode = modes[Math.floor(r() * modes.length)];
+    GAME.layers = [18, 18, 24, 24, 30][Math.floor(r() * 5)];
+    const d = new Date();
+    UIS.challengeLabel = `Daily ${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    $('chalDesc').textContent = `${UIS.challengeLabel}: ${MODES[GAME.mode].name}, ${GAME.layers} layers, seed ${GAME.seed}. Same start for everyone; physics can still differ slightly between devices.`;
+    setOn('[data-layers]', 'layers', GAME.layers);
+    setOn('[data-mode]', 'mode', GAME.mode);
+    $('modeDesc').textContent = MODES[GAME.mode].desc;
+    newTower(); applyMaterial(MODES[GAME.mode].mat);
+  } else if (c === 'random') {
+    if (fresh) GAME.seed = (Math.random() * 1e9) >>> 0;
+    UIS.challengeLabel = 'Randomized';
+    $('chalDesc').textContent = `Blocks start slightly shifted (seed ${GAME.seed}). The tower is settled by the physics before you play.`;
+    newTower();
+  } else {
+    GAME.seed = CFG.seed;
+    UIS.challengeLabel = 'Survival';
+    $('chalDesc').textContent = 'Keep extracting and stacking until the tower falls.';
+    newTower();
+  }
+  $('chalVal').textContent = UIS.challengeLabel;
+}
+function renderRecords() {
+  const d = RECORDS.data, el = $('records');
+  const rows = [
+    ['Most moves', d.moves ?? '—'],
+    ['Tallest tower', d.tower ? `${d.tower} layers` : '—'],
+    ['Fastest extraction', d.fastest !== undefined ? `${d.fastest.toFixed(1)} s` : '—'],
+    ['Hardest challenge', d.hardest ? d.hardest.label : '—'],
+    ['Best score, no slow-mo', d.scoreNoSlow !== undefined ? d.scoreNoSlow.toLocaleString('en-US') : '—'],
+  ];
+  el.innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+}
+function bindUI() {
+  $('startBtn').addEventListener('click', () => { startGame(); toast('Game on. Pull a block below the top layer.'); });
+  $('restartBtn').addEventListener('click', () => { newTower(); startGame(); });
+  $('pauseBtn').addEventListener('click', () => setPaused(GAME.state !== 'paused'));
+  $('undoBtn').addEventListener('click', undo);
+  $('undoResultBtn').addEventListener('click', undo);
+  $('resetBtn').addEventListener('click', () => newTower());
+  $('newChallengeBtn').addEventListener('click', () => { setChallenge('random', true); toast(`New challenge · seed ${GAME.seed}`); });
+  $('replayBtn').addEventListener('click', startReplay);
+  $('restartResultBtn').addEventListener('click', () => { newTower(); startGame(); });
+  $('closeResultBtn').addEventListener('click', () => ($('result').hidden = true));
+  document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+  document.querySelectorAll('[data-layers]').forEach((b) => b.addEventListener('click', () => { GAME.layers = +b.dataset.layers; setOn('[data-layers]', 'layers', GAME.layers); newTower(); camGo('reset', 0.8); toast(`${DIFF[GAME.layers]} · ${GAME.layers} layers`); }));
+  document.querySelectorAll('[data-mat]').forEach((b) => b.addEventListener('click', () => applyMaterial(b.dataset.mat)));
+  document.querySelectorAll('[data-cam]').forEach((b) => b.addEventListener('click', () => { camGo(b.dataset.cam); setOn('[data-cam]', 'cam', b.dataset.cam); }));
+  document.querySelectorAll('[data-chal]').forEach((b) => b.addEventListener('click', () => setChallenge(b.dataset.chal)));
+  document.querySelectorAll('[data-speed]').forEach((b) => b.addEventListener('click', () => { UIS.speed = +b.dataset.speed; setOn('[data-speed]', 'speed', b.dataset.speed); if (UIS.precision) PHYS.targetScale = UIS.speed; }));
+  SL.elast = slider('elastSlider', 'elastOut', (v) => v + '%', (v) => { PHYS.params.elasticity = v / 100; wakeAll(); });
+  SL.fric = slider('fricSlider', 'fricOut', (v) => (v / 100).toFixed(2), (v) => { PHYS.params.friction = v / 100; for (const b of PHYS.blocks) { b.collider.setFriction(v / 100); b.mu = v / 100; } wakeAll(); });
+  SL.grav = slider('gravSlider', 'gravOut', (v) => (v / 100).toFixed(2) + ' g', (v) => { PHYS.params.gravity = v / 100; applyGravity(); wakeAll(); });
+  SL.pull = slider('pullSlider', 'pullOut', (v) => v + '%', (v) => { PHYS.params.pull = v / 100; });
+  SL.damp = slider('dampSlider', 'dampOut', (v) => v + '%', (v) => { PHYS.params.damping = v / 100; applyBodyDamping(); });
+  SL.quake = slider('quakeSlider', 'quakeOut', (v) => v + '%', (v) => { QUAKE.intensity = v / 100; });
+  SL.limit = slider('limitSlider', 'limitOut', (v) => v + '%', (v) => { UIS.limit = v / 100; });
+  SL.vol = slider('volSlider', 'volOut', (v) => v + '%', (v) => AUDIO.setVolume(v / 100));
+  $('stressToggle').addEventListener('change', (e) => (UIS.stress = e.target.checked));
+  $('comToggle').addEventListener('change', (e) => (UIS.com = e.target.checked));
+  $('stabToggle').addEventListener('change', (e) => (UIS.stab = e.target.checked));
+  $('precisionToggle').addEventListener('change', (e) => setPrecision(e.target.checked));
+  $('assistToggle').addEventListener('change', (e) => { GAME.assisted = e.target.checked; toast(GAME.assisted ? 'Assisted placement: blocks snap to free slots' : 'Manual placement: you line the block up yourself'); });
+  $('practiceToggle').addEventListener('change', (e) => { GAME.practice = e.target.checked; updateUndo(); toast(GAME.practice ? 'Practice mode: undo on, layer rules relaxed' : 'Practice mode off'); });
+  $('orbitToggle').addEventListener('change', (e) => { UIS.orbit = e.target.checked; controls.enableRotate = UIS.orbit; });
+  $('soundToggle').addEventListener('change', (e) => { AUDIO.ensure(); AUDIO.setOn(e.target.checked); $('audioVal').textContent = e.target.checked ? 'On' : 'Muted'; });
+  document.querySelectorAll('details').forEach((d) => d.addEventListener('toggle', () => { try { localStorage.setItem('flexjenga.sec.' + d.querySelector('summary').firstChild.textContent.trim(), d.open ? '1' : '0'); } catch (_) { /* storage unavailable */ } }));
+}
+
+/* ---------- loop ---------- */
+const LOOP = { last: performance.now(), frame: 0, hold: false, slowAcc: 0, slowN: 0 };
+function resize() {
+  renderer.setPixelRatio(QUALITY.pixelRatio);
+  renderer.setSize(innerWidth, innerHeight, false);
+  camera.aspect = innerWidth / innerHeight;
+  applyViewOffset();
+  camera.updateProjectionMatrix();
+}
+function tick(dt) {
+  PHYS.timeScale = damp(PHYS.timeScale, PHYS.targetScale, 5, dt);
+  if (GAME.state === 'replay') replayTick(dt);
+  else {
+    if (!PHYS.paused) {
+      PHYS.acc += dt * PHYS.timeScale;
+      let n = 0;
+      while (PHYS.acc >= PHYS.dt && n < 16) { step(PHYS.dt); PHYS.acc -= PHYS.dt; n++; }
+      if (n >= 16) PHYS.acc = 0;
+      if (GAME.state === 'playing') { GAME.time += dt; if (UIS.precision) { GAME.slowUsed = true; GAME.slowUsedTurn = true; } }
+    }
+    if (DRAG.block) updateTarget(PTR.x, PTR.y);
+    renderBlocks();
+  }
+  LOOP.frame++;
+  if (LOOP.frame % 3 === 0 && GAME.state !== 'replay') analyse();
+  if (LOOP.frame % 2 === 0) hoverUpdate();
+  studio.position.copy(PHYS.plinthOffset);
+  ghost.visible = !!(DRAG.block && DRAG.phase !== 'extract');
+  if (ghost.visible) {
+    if (DRAG.slot) { ghost.position.copy(DRAG.slot.p); ghost.rotation.set(0, DRAG.slot.yaw, 0); }
+    else { const s = topSlots()[0]; ghost.position.set(DRAG.block.pos.x, s ? s.p.y : DRAG.block.pos.y, DRAG.block.pos.z); ghost.quaternion.copy(DRAG.block.quat); }
+  }
+  WOOD_U.uStress.value = damp(WOOD_U.uStress.value, UIS.stress ? 1 : 0, 8, dt);
+  updateCom();
+  camUpdate(dt);
+  if (LOOP.frame % 4 === 0) updateHud();
+  AUDIO.update(dt);
+  renderer.render(scene, camera);
+}
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, Math.max(0, (now - LOOP.last) / 1000));
+  LOOP.last = now;
+  if (LOOP.hold) return;
+  tick(dt);
+  // gentle quality fallback on slow machines
+  LOOP.slowAcc += dt; LOOP.slowN++;
+  if (LOOP.slowN >= 120) { if (LOOP.slowAcc / LOOP.slowN > 0.028 && QUALITY.pixelRatio > 1) { QUALITY.pixelRatio = Math.max(1, QUALITY.pixelRatio - 0.25); resize(); } LOOP.slowAcc = 0; LOOP.slowN = 0; }
+}
+
+/* ---------- boot ---------- */
+async function boot() {
+  try {
+    R = await import('rapier');
+    await R.init();
+  } catch (err) {
+    showError('The physics engine failed to load', `Rapier couldn't start (${err && err.message ? err.message : err}). It loads from jsDelivr as WebAssembly, so check the connection and make sure the browser allows WebAssembly, then reload.`);
+    return;
+  }
+  $('loaderNote').textContent = 'Stacking the tower';
+  await new Promise((r) => requestAnimationFrame(() => r()));
+  initWorld();
+  PHYS.beforeStep = dragForces;
+  PHYS.afterStep = afterStep;
+  RECORDS.load(); renderRecords();
+  setupPointer(); setupControls(); bindUI();
+  applyMaterial('flex');
+  newTower();
+  resize();
+  const g = camGoal('reset');
+  CAMS.target.y = towerHeight() * 0.44; controls.target.copy(CAMS.target);
+  camera.position.setFromSpherical(CAMS.sph.set(g.r, g.phi, g.theta)).add(CAMS.target);
+  CAMS.dist = CAMS.distTarget = g.r;
+  controls.update();
+  window.addEventListener('resize', resize);
+  $('loader').classList.add('done');
+  setTimeout(() => $('hint').classList.add('gone'), 9000);
+  window.__jengaReady = true;
+  LOOP.last = performance.now();
+  requestAnimationFrame(frame);
+}
+
+/* ---------- test hooks ---------- */
+window.flexJenga = {
+  hold(on) { LOOP.hold = on; },
+  tick(n = 1, dt = 1 / 60) { for (let i = 0; i < n; i++) tick(dt); },
+  state() {
+    return { state: GAME.state, mode: GAME.mode, layers: GAME.layers, top: STRUCT.top, topCount: STRUCT.topCount, completeTop: STRUCT.completeTop, turn: GAME.turn, removed: GAME.removed, turnsDone: GAME.turnsDone, score: GAME.score,
+      stability: +STRUCT.stability.toFixed(3), margin: +STRUCT.margin.toFixed(3), tilt: +STRUCT.tilt.toFixed(2), phase: GAME.phase, drag: DRAG.phase, tension: +DRAG.tension.toFixed(3), over: GAME.overReason, sleeping: PHYS.blocks.filter((b) => b.body.isSleeping()).length, n: PHYS.blocks.length, simTime: +PHYS.simTime.toFixed(3) };
+  },
+  blocks() { return PHYS.blocks.map((b) => ({ i: b.i, k: layerOf(b), x: +b.pos.x.toFixed(3), y: +b.pos.y.toFixed(3), z: +b.pos.z.toFixed(3), c: +b.c.toFixed(4), load: +b.load.toFixed(2), share: +b.share.toFixed(2), bend: +b.bend.toFixed(4), state: b.state, mu: +b.mu.toFixed(3) })); },
+  toScreen(x, y, z) { const v = new THREE.Vector3(x, y, z).project(camera); return { x: (v.x + 1) / 2 * innerWidth, y: (1 - v.y) / 2 * innerHeight }; },
+  blockScreen(i, endSign = 1) { const b = PHYS.blocks[i]; const p = b.pos.clone().addScaledVector(b.axis, endSign * b.L * 0.47); return this.toScreen(p.x, p.y, p.z); },
+  endPoint(i, endSign = 1) { const b = PHYS.blocks[i]; const p = b.pos.clone().addScaledVector(b.axis, endSign * b.L * 0.5); return { x: p.x, y: p.y, z: p.z }; },
+  params: PHYS.params, setElasticity(v) { PHYS.params.elasticity = v; wakeAll(); }, setMaterial: (k) => applyMaterial(k), setMode: (m) => setMode(m), startGame: () => startGame(), newTower: () => newTower(), camGo: (n, d) => camGo(n, d),
+  quakeNow() { QUAKE.t = 0; },
+  cam() { return { p: camera.position.toArray().map((v) => +v.toFixed(1)), tween: !!CAMS.tween, label: $('camVal').textContent }; },
+  drag() { const sl = DRAG.slot; return { phase: DRAG.phase, carryY: DRAG.carryY, target: DRAG.target.toArray().map((v) => +v.toFixed(2)), slot: sl ? sl.p.toArray().map((v) => +v.toFixed(2)) : null, active: GAME.active ? GAME.active.i : null, top: topSlots().map((t) => t.p.toArray().map((v) => +v.toFixed(2))) }; },
+  simFrames(n, dt = 1 / 60) {
+    for (let i = 0; i < n; i++) {
+      PHYS.acc += dt * PHYS.timeScale;
+      while (PHYS.acc >= PHYS.dt) { step(PHYS.dt); PHYS.acc -= PHYS.dt; }
+      if (GAME.state === 'playing') GAME.time += dt;
+      if (i % 3 === 0) analyse();
+    }
+    analyse();
+    return this.state();
+  },
+  autoPull(i, sign = 1, dist = 9, secs = 2.5) {
+    if (GAME.state === 'ready') startGame();
+    const b = PHYS.blocks[i], why = canGrab(b);
+    if (why) return { why };
+    const p = b.pos.clone().addScaledVector(b.axis, sign * b.L * 0.45);
+    grab({ b, p });
+    const a = DRAG.axis.clone().multiplyScalar(sign), s0 = DRAG.lineP.clone(), start = b.pos.clone(), n = Math.round(secs * 60);
+    let peak = 0, cPeak = 0;
+    for (let f = 0; f < n * 1.6 && DRAG.phase === 'extract'; f++) {
+      DRAG.target.copy(s0).addScaledVector(a, dist * Math.min(1, (f + 1) / n));
+      this.simFrames(1);
+      peak = Math.max(peak, DRAG.tension);
+      for (const o of PHYS.blocks) cPeak = Math.max(cPeak, o.c);
+    }
+    const moved = b.pos.distanceTo(start);
+    if (DRAG.phase === 'extract') release();
+    return { phase: DRAG.phase, state: b.state, peak: +peak.toFixed(3), moved: +moved.toFixed(2), cPeak: +cPeak.toFixed(4), game: GAME.state };
+  },
+  autoPlace(secs = 1.6) {
+    if (DRAG.phase !== 'carry') return { err: 'not carrying', phase: DRAG.phase };
+    const n = Math.round(secs * 60);
+    for (let f = 0; f < n; f++) {
+      const sl = topSlots()[0];
+      DRAG.target.set(sl.p.x, DRAG.carryY, sl.p.z); DRAG.yaw = sl.yaw; DRAG.slot = GAME.assisted ? sl : null;
+      this.simFrames(1);
+    }
+    release();
+    this.simFrames(150);
+    return this.state();
+  },
+  blockInfo(i) { const b = PHYS.blocks[i]; return { k: layerOf(b), load: b.load, share: b.share, c: b.c, x: b.pos.x, y: b.pos.y, z: b.pos.z, state: b.state, mu: b.mu }; },
+  layerMembers(k) { return PHYS.blocks.filter((b) => b.state === 'tower' && layerOf(b) === k).map((b) => ({ i: b.i, load: +b.load.toFixed(2), off: +(Math.abs(b.axis.x) > 0.5 ? b.pos.z : b.pos.x).toFixed(2) })); },
+  rebuild(layers, elast, jitter) { if (jitter !== undefined) CFG.block.heightJitter = jitter; PHYS.params.elasticity = elast; GAME.layers = layers; newTower(); return this.state(); }, structural: () => ({ ...STRUCT, layers: undefined, base: STRUCT.base }),
+};
+
+boot().catch((err) => { console.error(err); showError('The game failed to start', (err && err.message ? err.message + '. ' : '') + 'Reload the page; if it keeps happening, try another current browser.'); });
+</script>
+
+</body>
+</html>
