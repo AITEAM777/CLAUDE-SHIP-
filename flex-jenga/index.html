@@ -770,14 +770,14 @@ function updateDeformation(dt) {
 }
 
 /* ---------- earthquake: the plinth itself shakes ---------- */
-const QUAKE = { on: false, intensity: 0.5, next: 16, warnAt: 0, t: -1, dur: 1.5, fx: 8.5, fz: 6.2, phase: 0, rng: mulberry32(77) };
-function scheduleQuake(now) { QUAKE.next = now + lerp(22, 11, QUAKE.intensity) + QUAKE.rng() * 8; QUAKE.fx = 7 + QUAKE.rng() * 4; QUAKE.fz = 5 + QUAKE.rng() * 4; QUAKE.phase = QUAKE.rng() * TAU; }
+const QUAKE = { on: false, intensity: 0.5, next: 16, warnAt: 0, t: -1, dur: 2.2, fx: 4.2, fz: 3.4, phase: 0, rng: mulberry32(77) };
+function scheduleQuake(now) { QUAKE.next = now + lerp(22, 11, QUAKE.intensity) + QUAKE.rng() * 8; QUAKE.fx = 3.4 + QUAKE.rng() * 1.8; QUAKE.fz = 2.8 + QUAKE.rng() * 1.6; QUAKE.phase = QUAKE.rng() * TAU; }
 function quakeOffset(t) {
   if (QUAKE.t < 0) return null;
   const k = QUAKE.t / QUAKE.dur;
   if (k >= 1) return null;
   const env = Math.sin(Math.PI * k) ** 1.5;
-  const A = (0.03 + 0.17 * QUAKE.intensity) * env;
+  const A = (0.06 + 0.5 * QUAKE.intensity) * env;
   return { x: A * Math.sin(TAU * QUAKE.fx * QUAKE.t + QUAKE.phase), z: A * 0.65 * Math.sin(TAU * QUAKE.fz * QUAKE.t) };
 }
 
@@ -1363,9 +1363,9 @@ const AUDIO = {
   rumble(intensity) {
     if (!this.ctx || !this.on) return;
     const c = this.ctx, t = c.currentTime, src = c.createBufferSource(), lp = c.createBiquadFilter(), g = c.createGain();
-    src.buffer = this.noise; src.loop = true; lp.type = 'lowpass'; lp.frequency.value = 140;
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.5 * intensity, t + 0.2); g.gain.linearRampToValueAtTime(0, t + 1.7);
-    src.connect(lp); lp.connect(g); g.connect(this.master); src.start(t); src.stop(t + 1.8);
+    src.buffer = this.noise; src.loop = true; lp.type = 'lowpass'; lp.frequency.value = 180;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.5 * intensity, t + 0.3); g.gain.linearRampToValueAtTime(0, t + QUAKE.dur);
+    src.connect(lp); lp.connect(g); g.connect(this.master); src.start(t); src.stop(t + QUAKE.dur + 0.1);
   },
   collapse() { this.knock(0.9, 0.8); },
   // called every frame: impacts from velocity jumps, sliding from the dragged block
@@ -1374,7 +1374,7 @@ const AUDIO = {
     const now = this.ctx.currentTime;
     PHYS.blocks.forEach((b, i) => {
       const lv = b.body.linvel(), v = Math.hypot(lv.x, lv.y, lv.z), pv = this.lastV[i] ?? v;
-      const dv = Math.abs(v - pv);
+      const dv = Math.abs(v - pv) * (1 / 60) / Math.max(dt, 1 / 240); // per 60 Hz frame, so any frame rate sounds the same
       this.lastV[i] = v;
       if (dv > 9 && v < pv && (this.cooldown[i] ?? 0) < now && b !== DRAG.block) {
         this.cooldown[i] = now + 0.07;
